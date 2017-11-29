@@ -1,23 +1,84 @@
+import java.awt.Point;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.net.ServerSocket;
+import java.net.Socket;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Vector;
+
+import javafx.scene.paint.Color;
 
 public class Server {
+
+    private static ServerSocket serverSocket;
+    // store vector containing all output streams
+    private static List<ObjectOutputStream> players = new Vector<>();
+    private static Vector<Socket> playerSockets = new Vector<>();
+
+    private static int playerCtr = 0;
+
+    private static Vector<Card> deck;
     
-    private ArrayList<Card> deck;
-    
-    public Server() {
+    private static final int NUM_PLAYERS = 4;
+
+
+    public static void main(String[] args) throws IOException {
+	serverSocket = new ServerSocket(10495);
+
 	setDeck();
-	establishSockets();
+
+	// Setup the server to accept many clients
+	while (true) {
+	    playerSockets.add(serverSocket.accept());
+	    System.out.println("New player connected.");
+
+	    ObjectInputStream inputFromClient = new ObjectInputStream(playerSockets.get(playerCtr).getInputStream());
+	    ObjectOutputStream outputToClient = new ObjectOutputStream(playerSockets.get(playerCtr).getOutputStream());
+
+	    // Add the new player to the List of output streams
+	    players.add(outputToClient);
+
+	    // Start the loop that reads any Client's writeObject in the background in a 
+	    // different Thread so this program can also wait for new Client connections.
+	    // This thread allows the Server to wait for each client's writing of a String message.
+	    // TODO 2: Start a new ClientHandler in a new Thread
+	    ClientHandler clientHandler = new ClientHandler(inputFromClient);
+	    Thread thread = new Thread(clientHandler);
+	    thread.start();
+	    playerCtr++;
+	    
+	    if(playerCtr == NUM_PLAYERS) {
+		for(int i = 0; i < NUM_PLAYERS; i++) {
+		    Command cmd = new Command(NetworkCommand.INDEX, i, buildHand(), playerSockets);
+		    players.get(i).writeObject(cmd);
+		}
+	    }
+	}
     }
 
-    private void establishSockets() {
-	// TODO Auto-generated method stub
-	
+    /**
+     * 
+     * @return a hand with 5 random cards from the deck until the deck is empty
+     */
+    private static Vector<Card> buildHand() {
+	Vector<Card> hand = new Vector<>();
+
+	for (int i = 0; i < 5 && i < deck.size(); i++) {
+	    hand.add(deck.remove(0));
+	    Collections.shuffle(deck);
+	}
+
+
+	return hand;
     }
 
-    private void setDeck() {
+    private static void setDeck() {
 
-	deck = new ArrayList<>();
+	deck = new Vector<>();
 
 	Card C2 = new Card(Rank.DEUCE, Suit.CLUBS);
 	Card C3 = new Card(Rank.THREE, Suit.CLUBS);
