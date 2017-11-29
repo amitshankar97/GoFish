@@ -28,8 +28,6 @@ public class Player {
     }
 
 
-
-
     private static void makeConnection() {
 	// Our server is on our computer, but make sure to use the same port.
 	try {
@@ -57,12 +55,17 @@ public class Player {
 	public void run() {
 	    try {
 		while(true) {
+		    System.out.println("before reading object");
 		    Command input = (Command) inputFromServer.readObject();
+		    System.out.println("after reading object");
 		    NetworkCommand commandType = input.getCommand();
 		    Object param1 = input.getParam1();
 		    Object param2 = input.getParam2();
 		    Object param3 = input.getParam3();
-		    
+
+		    if(commandType == NetworkCommand.WELCOME) {
+			System.out.println("Waiting on other players....");
+		    }
 		    if(commandType == NetworkCommand.INDEX) {
 			index = (int) param1;
 			hand = (Vector<Card>) param2; // initialize the deck here
@@ -93,7 +96,7 @@ public class Player {
 		}
 	    } catch(IOException ioe) {}
 	    catch(ClassNotFoundException cnfe) {}
-
+	    System.out.println("CLOSED FOR BUSINESS");
 	}
 
 	@Override

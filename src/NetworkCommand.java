@@ -1,3 +1,5 @@
+import java.io.Serializable;
+
 /**
  * INDEX:
  * 	param1: int index
@@ -16,6 +18,6 @@
  * @author amitshankar
  *
  */
-public enum NetworkCommand {
-    GOFISH, INDEX, ONECARD, FIVECARDS, GAMEOVER
+public enum NetworkCommand implements Serializable {
+    GOFISH, INDEX, ONECARD, FIVECARDS, GAMEOVER, WELCOME
 }

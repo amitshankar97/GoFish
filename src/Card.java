@@ -1,9 +1,8 @@
-
-
+import java.io.Serializable;
 
 // Model a Card, five of which will model a poker hand.
 //
-public class Card implements Comparable<Card>{
+public class Card implements Comparable<Card>, Serializable {
   private final Rank rank;
   private final Suit suit;
 

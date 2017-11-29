@@ -1,16 +1,11 @@
-import java.awt.Point;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Vector;
-
-import javafx.scene.paint.Color;
 
 public class Server {
 
@@ -22,7 +17,7 @@ public class Server {
     private static int playerCtr = 0;
 
     private static Vector<Card> deck;
-    
+
     private static final int NUM_PLAYERS = 4;
 
 
@@ -33,32 +28,111 @@ public class Server {
 
 	// Setup the server to accept many clients
 	while (true) {
-	    playerSockets.add(serverSocket.accept());
+	    Socket socket = serverSocket.accept();
+	    playerSockets.add(socket);
+	    
 	    System.out.println("New player connected.");
 
-	    ObjectInputStream inputFromClient = new ObjectInputStream(playerSockets.get(playerCtr).getInputStream());
-	    ObjectOutputStream outputToClient = new ObjectOutputStream(playerSockets.get(playerCtr).getOutputStream());
+	    players.add(new ObjectOutputStream(socket.getOutputStream()));
+	    ObjectInputStream inputFromClient = new ObjectInputStream(socket.getInputStream());
+	    
+	    // Welcome the player
+	    new ObjectOutputStream(socket.getOutputStream()).writeObject(new Command(NetworkCommand.WELCOME));
 
-	    // Add the new player to the List of output streams
-	    players.add(outputToClient);
 
 	    // Start the loop that reads any Client's writeObject in the background in a 
 	    // different Thread so this program can also wait for new Client connections.
 	    // This thread allows the Server to wait for each client's writing of a String message.
 	    // TODO 2: Start a new ClientHandler in a new Thread
-	    ClientHandler clientHandler = new ClientHandler(inputFromClient);
+	    ClientHandler clientHandler = new ClientHandler(inputFromClient, players.get(playerCtr));
 	    Thread thread = new Thread(clientHandler);
 	    thread.start();
 	    playerCtr++;
-	    
+
 	    if(playerCtr == NUM_PLAYERS) {
 		for(int i = 0; i < NUM_PLAYERS; i++) {
+		    System.out.println("i: " + i);
 		    Command cmd = new Command(NetworkCommand.INDEX, i, buildHand(), playerSockets);
 		    players.get(i).writeObject(cmd);
 		}
 	    }
 	}
     }
+
+
+    private static class ClientHandler implements Runnable {
+
+	private ObjectInputStream input;
+	private ObjectOutputStream output;
+
+	public ClientHandler(ObjectInputStream input, ObjectOutputStream output) {
+	    this.output = output;
+	    this.input = input;
+	}
+
+	@Override
+	public void run() {
+	    // TODO 3: Complete this run method with a while(true) loop
+	    // to read any new messages from the server. When a new read
+	    // happens, write the new message to all Clients
+	    while(true) {
+		Command cmd = null;
+		try {
+		    if (input == null)
+			System.out.println("THIS INPUT STREAM IS CLOSED");
+		    System.out.println("Server waiting for client write");
+		    cmd = (Command) input.readObject();
+		    System.out.println("Server after client write");
+		    NetworkCommand commandType = cmd.getCommand();
+		    
+		    if(commandType == NetworkCommand.FIVECARDS) {
+			Command returnCommand = new Command(NetworkCommand.FIVECARDS, buildHand(), null, null);
+			output.reset();
+			output.writeObject(returnCommand);
+		    } else if(commandType == NetworkCommand.ONECARD) {
+			Collections.shuffle(deck);
+			Card returnCard = deck.size() > 0 ? deck.remove(0) : null;
+			Command returnCommand = new Command(NetworkCommand.ONECARD, returnCard, null, null);
+			
+			output.reset();
+			output.writeObject(returnCommand);
+		    } else if(commandType == NetworkCommand.GAMEOVER) {
+			/**
+			 * 1. Check if all the players have 0 cards
+			 * 2. Check if the deck has 0 cards
+			 * 3. Check the number of books for each player
+			 * 4. If there's a tie, compare the books
+			 */
+			output.reset();
+		    }
+		    
+		} catch(IOException ioe) {
+		    System.out.println("client broke out");
+		    ioe.printStackTrace();
+		    break; // break from the thread when client is closed
+		}
+		catch(ClassNotFoundException cnfe) {}
+	    }
+	}
+
+	/*// TODO 4: This method is used to write message to all output streams
+	private void writeVectorToClients(Vector<PaintObject> objects) {
+	    for(ObjectOutputStream stream: outputStreams) {
+		try {
+		    stream.reset(); // reset before sending the new list of objects
+		    stream.writeObject(objects); // write vector to all output streams
+		} catch (IOException e) {
+		} catch (ConcurrentModificationException e) {
+		}
+	    }
+	}*/
+	
+    }
+
+
+
+
+
 
     /**
      * 
