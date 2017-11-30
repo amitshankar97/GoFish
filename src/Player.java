@@ -5,6 +5,7 @@ import java.io.ObjectOutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Scanner;
 import java.util.Vector;
 import javafx.concurrent.Task;
@@ -13,7 +14,8 @@ public class Player {
     private static int index;
     private static int numCards;
 
-    private static Vector<Card> hand;
+    private static HashMap<Rank, Vector<Card>> hand;
+    private static Vector<Card> books;
 
     // Connection variables
     private static Socket socketFromServer;
@@ -30,6 +32,7 @@ public class Player {
     private static Scanner sc = new Scanner(System.in);
 
     public static void main(String args[]) throws IOException {
+	initializeBooksAndHand();
 	makeServerConnection();
 	makePlayerConnections();
 
@@ -95,7 +98,18 @@ public class Player {
 
     }
 
-    private static void makePlayerConnections() throws IOException {
+    private void initializeBooksAndHand() {
+	// initialize the hand
+	hand = new HashMap<Rank, Vector<Card>>();
+	for(Rank r: Rank.values()) {
+	    hand.put(r, new Vector<Card>());
+	}
+	
+	// initialize the books
+	books = new Vector<Card>();
+    }
+
+    private void makePlayerConnections() throws IOException {
 	boolean listen = index % 2 == 0;
 	int connectionsMade = 0;
 
@@ -118,14 +132,14 @@ public class Player {
 
 				neighborOutputStreams.add((ObjectOutputStream) lastSocket.getOutputStream());
 				neighborInputStreams.add((ObjectInputStream) lastSocket.getInputStream());
-				
+
 				System.out.println("Player 4 connected");
 			    }
 			} else {
 			    socket = new Socket(Address, 10497);
 			    neighborOutputStreams.add((ObjectOutputStream) socket.getOutputStream());
-			neighborInputStreams.add((ObjectInputStream) socket.getInputStream());
-			    
+			    neighborInputStreams.add((ObjectInputStream) socket.getInputStream());
+
 			    System.out.println("Player " + index + " listening on port " + (10495 + index));
 			}
 			connectionsMade++;
@@ -134,31 +148,35 @@ public class Player {
 		}
 	    } else {
 		int playerToConnect = 2;
-		
-		
+		while (playerToConnect <= 4) {
+		    Socket socket = new Socket(Address, 10495 + playerToConnect);
+		    outputToServer = new ObjectOutputStream(socket.getOutputStream());
+		    inputFromServer = new ObjectInputStream(socket.getInputStream());
+		    playerToConnect += 2;
+		}
 	    }
 	}
     }
 
-    private static void askPlayer(int pNumber, int cardNumber) {
-	Command cmd = new Command(NetworkCommand.GOFISH, pNumber, cardNumber);
+    private void askPlayer(int pNumber, int cardNumber) {
+	Command cmd = new Command(NetworkCommand.GOFISHREQ, pNumber, cardNumber);
 	for (int i = 0; i < neighbors.size(); i++) {
 	    if (i == index)
 		continue;
 	}
     }
 
-    private static boolean isValid(int cardNumber) {
+    private boolean isValid(int cardNumber) {
 	// TODO Auto-generated method stub
 	return false;
     }
 
-    private static void printOptions() {
+    private void printOptions() {
 	// TODO Auto-generated method stub
 
     }
 
-    private static void makeServerConnection() {
+    private void makeServerConnection() {
 	// Our server is on our computer, but make sure to use the same port.
 	try {
 	    socketFromServer = new Socket(Address, 10495);
@@ -177,7 +195,63 @@ public class Player {
 	}
     }
 
-    private static class ListenForServerUpdates extends Task<Object> {
+    private class ListenForClientUpdates extends Task<Object> {
+
+	@Override
+	public void run() {
+	    try {
+		while (true) {
+		    System.out.println("before reading object");
+		    Command input = (Command) inputFromServer.readObject();
+		    System.out.println("after reading object");
+		    NetworkCommand commandType = input.getCommand();
+		    Object param1 = input.getParam1();
+		    Object param2 = input.getParam2();
+		    Object param3 = input.getParam3();
+
+		    if (commandType == NetworkCommand.GOFISHREQ) {
+			int fromIndex = (int) param1;
+			int toIndex = (int) param2;
+			Rank cardRank = (Rank) param3;
+
+			if(toIndex == index) {
+			    if()
+			}
+
+		    } else if (commandType == NetworkCommand.GAMEOVER) {
+			if (index == (int) param1)
+			    System.out.println("Congratulations!!!! You won!");
+			else
+			    System.out.println("Player " + (int) param1 + " won the game!");
+		    } else if (commandType == NetworkCommand.FIVECARDS) {
+			numCards = (int) param1;
+
+			System.out.println("You received " + numCards + " cards: ");
+			System.out.println(hand);
+		    } else if (commandType == NetworkCommand.ONECARD) {
+			numCards += 1;
+			hand.add((Card) param1);
+
+			System.out.println("You received: " + (Card) param1);
+			System.out.println("New hand: \n" + hand);
+		    }
+		}
+	    } catch (IOException ioe) {
+		ioe.printStackTrace();
+	    } catch (ClassNotFoundException cnfe) {
+		cnfe.printStackTrace();
+	    }
+	    System.out.println("CLOSED FOR BUSINESS");
+	}
+
+	@Override
+	protected Object call() throws Exception {
+	    // Not using this call, but we need to override it to compile
+	    return null;
+	}
+    }
+
+    private class ListenForServerUpdates extends Task<Object> {
 
 	@Override
 	public void run() {
@@ -196,11 +270,7 @@ public class Player {
 		    }
 		    if (commandType == NetworkCommand.INDEX) {
 			index = (int) param1;
-			hand = (Vector<Card>) param2; // initialize the deck
-						      // here
-			neighbors = (Vector<Socket>) param3; // store the other
-							     // players
-
+			initializeHand((Vector<Card>) param2);
 			System.out.println("Welcome to Go Fish! You are Player " + index);
 		    } else if (commandType == NetworkCommand.GAMEOVER) {
 			if (index == (int) param1)
@@ -209,14 +279,14 @@ public class Player {
 			    System.out.println("Player " + (int) param1 + " won the game!");
 		    } else if (commandType == NetworkCommand.FIVECARDS) {
 			numCards = (int) param1;
-			hand = (Vector<Card>) param2;
-
+			initializeHand((Vector<Card>) param2);
+			// check if there's a book
 			System.out.println("You received " + numCards + " cards: ");
 			System.out.println(hand);
 		    } else if (commandType == NetworkCommand.ONECARD) {
 			numCards += 1;
-			hand.add((Card) param1);
-
+			addOneCard((Card) param1);
+			// check if there's a book
 			System.out.println("You received: " + (Card) param1);
 			System.out.println("New hand: \n" + hand);
 		    }
@@ -227,6 +297,28 @@ public class Player {
 		cnfe.printStackTrace();
 	    }
 	    System.out.println("CLOSED FOR BUSINESS");
+	}
+
+	private void addOneCard(Card c) {
+	    Vector<Card> cards = hand.get(c.getRank());
+	    cards.add(c);
+	    hand.put(c.getRank(), cards);
+	    if(cards.size() == 4)
+		handleBook(c.getRank());
+	}
+
+	private void handleBook(Rank rank) {
+	    
+	}
+
+	private void initializeHand(Vector<Card> cards) {
+	    for(Card c: cards) {
+		Vector<Card> handVector = hand.get(c.getRank());
+		handVector.add(c);
+		hand.put(c.getRank(), handVector);
+		if(handVector.size() == 4)
+		    handleBook(c.getRank());
+	    }
 	}
 
 	@Override

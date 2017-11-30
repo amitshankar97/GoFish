@@ -23,5 +23,5 @@ import java.io.Serializable;
  *
  */
 public enum NetworkCommand implements Serializable {
-    GOFISH, INDEX, ONECARD, FIVECARDS, GAMEOVER, WELCOME
+    GOFISHREQ, GOFISHRES, INDEX, ONECARD, FIVECARDS, GAMEOVER, WELCOME
 }
