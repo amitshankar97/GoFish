@@ -15,6 +15,10 @@ import java.io.Serializable;
  * FIVECARDS:
  * 	param1: List<Card> hand
  * 
+ * GOFISH:
+ * 	param1: Player number
+ * 	param2: card number
+ * 
  * @author amitshankar
  *
  */

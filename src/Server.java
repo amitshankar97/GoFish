@@ -1,3 +1,4 @@
+import java.io.EOFException;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
@@ -33,11 +34,11 @@ public class Server {
 	    
 	    System.out.println("New player connected.");
 
-	    players.add(new ObjectOutputStream(socket.getOutputStream()));
+	    ObjectOutputStream outputToClient = new ObjectOutputStream(socket.getOutputStream());
 	    ObjectInputStream inputFromClient = new ObjectInputStream(socket.getInputStream());
-	    
-	    // Welcome the player
-	    new ObjectOutputStream(socket.getOutputStream()).writeObject(new Command(NetworkCommand.WELCOME));
+
+	    players.add(new ObjectOutputStream(outputToClient)); // add the stream
+	    // outputToClient.writeObject(new Command(NetworkCommand.WELCOME));
 
 
 	    // Start the loop that reads any Client's writeObject in the background in a 
@@ -106,7 +107,8 @@ public class Server {
 			output.reset();
 		    }
 		    
-		} catch(IOException ioe) {
+		} catch(EOFException e) {e.printStackTrace();}
+		  catch(IOException ioe) {
 		    System.out.println("client broke out");
 		    ioe.printStackTrace();
 		    break; // break from the thread when client is closed
