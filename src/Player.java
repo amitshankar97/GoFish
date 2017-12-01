@@ -1,9 +1,10 @@
-import java.io.EOFException;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Scanner;
@@ -24,14 +25,22 @@ public class Player {
 
     private static ServerSocket fromNeighbor;
     private static Vector<Socket> neighbors;
-    private static ArrayList<ObjectOutputStream> neighborOutputStreams;
-    private static ArrayList<ObjectInputStream> neighborInputStreams;
 
     private static final String Address = "localhost";
+    private static String computerName = "";
+    private static final String Arizona = ".cs.arizona.edu";
 
     private static Scanner sc = new Scanner(System.in);
 
+    private static ObjectOutputStream toSender;
+    private static ObjectInputStream fromSender;
+    private static ObjectOutputStream toReceiver;
+    private static ObjectInputStream fromReceiver;
+
+    private static Object response = new Object();
+    private static Object yourTurnMonitor = new Object();
     public static void main(String args[]) throws IOException {
+	initializeComputerName();
 	initializeBooksAndHand();
 	makeServerConnection();
 	makePlayerConnections();
@@ -39,6 +48,41 @@ public class Player {
 	System.out.println("Welcome to Go Fish! Here are the possible commands:");
 	System.out.println("1) gofish\n2) quit");
 
+	if ("harbor".equals(computerName)) {
+	    myTurn();
+	    notMyTurn();
+	} else {
+	    notMyTurn();
+	}
+
+	while (true) {
+	    myTurn();
+	    notMyTurn();
+	}
+
+    }
+
+    private static void initializeComputerName() {
+	try {
+	    computerName = (InetAddress.getLocalHost().getHostName());
+	} catch (UnknownHostException e) {
+	    // TODO Auto-generated catch block
+	    e.printStackTrace();
+	}
+    }
+
+    private static void initializeBooksAndHand() {
+	// initialize the hand
+	hand = new HashMap<Rank, Vector<Card>>();
+	for (Rank r : Rank.values()) {
+	    hand.put(r, new Vector<Card>());
+	}
+
+	// initialize the books
+	books = new Vector<Card>();
+    }
+
+    public static void myTurn() {
 	while (sc.hasNext()) {
 	    Command cmd = null;
 	    String userString = sc.nextLine();
@@ -68,115 +112,171 @@ public class Player {
 
 		    if (isValid(cardNumber)) {
 			askPlayer(pNumber, cardNumber);
+			try {
+			    response.wait();
+			} catch (InterruptedException e) {
+			    // TODO Auto-generated catch block
+			    e.printStackTrace();
+			}
 		    } else {
 			System.out.println("Sorry! That is not a valid choice.");
 		    }
 		}
-
 	    } else {
 		System.out.println("Sorry! Didn't recognize the command.");
 		continue;
 	    }
-
+	    
+	    Command cmd4 = new Command(NetworkCommand.ENDTURN, getNextPlayer());
 	    try {
-		outputToServer.writeObject(cmd);
+		toSender.writeObject(cmd4);
 	    } catch (IOException e) {
 		// TODO Auto-generated catch block
 		e.printStackTrace();
 	    }
-	    System.out.println("Hi client, you wrote: " + userString);
-	    if (userString.toLowerCase().equals("quit")) {
-		System.out.println("You entered the magic word");
-		break;
-	    } else {
-		System.out.print("Enter a message: ");
+	}
+    }
+
+    private static Object getNextPlayer() {
+	if ("harbor.cs.arizona.edu".equals(computerName)) {
+	    return "harmonica.cs.arizona.edu";
+	} else if ("harmonica.cs.arizona.edu".equals(computerName)) {
+	    return "harpoon.cs.arizona.edu";
+	}  else if ("harpoon.cs.arizona.edu".equals(computerName)) {
+	    return "harlem.cs.arizona.edu";
+	} else {
+	    return "harbor.cs.arizona.edu";
+	}
+    }
+
+    public static void notMyTurn() {
+	    try {
+		yourTurnMonitor.wait();
+	    } catch (InterruptedException e) {
+		// TODO Auto-generated catch block
+		e.printStackTrace();
 	    }
-
-	}
-
-	sc.close();
-
     }
 
-    private void initializeBooksAndHand() {
-	// initialize the hand
-	hand = new HashMap<Rank, Vector<Card>>();
-	for(Rank r: Rank.values()) {
-	    hand.put(r, new Vector<Card>());
-	}
-	
-	// initialize the books
-	books = new Vector<Card>();
-    }
+    private static void makePlayerConnections() throws IOException {
 
-    private void makePlayerConnections() throws IOException {
-	boolean listen = index % 2 == 0;
 	int connectionsMade = 0;
 
-	while (true) {
-	    if (listen) {
-		fromNeighbor = new ServerSocket(10495 + index);
-		System.out.println("Player " + index + " listening on port " + (10495 + index));
-		while (true) {
-		    Socket socket = fromNeighbor.accept();
-		    neighbors.add(socket);
-		    System.out.println("Player " + neighbors.size() + " connected.");
-		    connectionsMade++;
+	if ("harlem".equals(computerName) || "harmonica".equals(computerName)) {
+	    fromNeighbor = new ServerSocket(10495);
+	    int count = 1;
+	    System.out.println(computerName + " listening on port 10495");
+	    while (true) {
+		Socket socket = fromNeighbor.accept();
+		String connectorName = socket.getInetAddress().getHostAddress();
 
-		    // Connections finished, connect the last 2 even players
-		    if (connectionsMade == 2) {
-			if (index == 2) {
-			    while (true) {
-				Socket lastSocket = fromNeighbor.accept();
-				neighbors.add(lastSocket);
-
-				neighborOutputStreams.add((ObjectOutputStream) lastSocket.getOutputStream());
-				neighborInputStreams.add((ObjectInputStream) lastSocket.getInputStream());
-
-				System.out.println("Player 4 connected");
-			    }
-			} else {
-			    socket = new Socket(Address, 10497);
-			    neighborOutputStreams.add((ObjectOutputStream) socket.getOutputStream());
-			    neighborInputStreams.add((ObjectInputStream) socket.getInputStream());
-
-			    System.out.println("Player " + index + " listening on port " + (10495 + index));
-			}
-			connectionsMade++;
-			break;
+		// if we are harmonica
+		if (("harmonica" + Arizona).equals(computerName)) {
+		    // if we are connection to harbor
+		    if (("harbor" + Arizona).equals(connectorName)) {
+			toReceiver = new ObjectOutputStream(socket.getOutputStream());
+			fromReceiver = new ObjectInputStream(socket.getInputStream());
+		    } else {
+			// if we are talking harpoon
+			toSender = new ObjectOutputStream(socket.getOutputStream());
+			fromSender = new ObjectInputStream(socket.getInputStream());
+		    }
+		} else {
+		    // if we are harlem
+		    // if we are connection to harpoon
+		    if (("harpoon" + Arizona).equals(connectorName)) {
+			toReceiver = new ObjectOutputStream(socket.getOutputStream());
+			fromReceiver = new ObjectInputStream(socket.getInputStream());
+		    } else {
+			// if we are talking harbor
+			toSender = new ObjectOutputStream(socket.getOutputStream());
+			fromSender = new ObjectInputStream(socket.getInputStream());
 		    }
 		}
+
+		System.out.println(connectorName + " is now connected.");
+		count++;
+		// Connections finished, connect the last 2 even players
+		if (count == 3)
+		    break;
+	    } // end of while(true) loop for listeners
+
+	} else {
+
+	    // if you are a connector
+	    Socket socket = new Socket("harmonica", 10495);
+	    if (("harbor" + Arizona).equals(computerName)) {
+		toSender = new ObjectOutputStream(socket.getOutputStream());
+		fromSender = new ObjectInputStream(socket.getInputStream());
 	    } else {
-		int playerToConnect = 2;
-		while (playerToConnect <= 4) {
-		    Socket socket = new Socket(Address, 10495 + playerToConnect);
-		    outputToServer = new ObjectOutputStream(socket.getOutputStream());
-		    inputFromServer = new ObjectInputStream(socket.getInputStream());
-		    playerToConnect += 2;
-		}
+		toReceiver = new ObjectOutputStream(socket.getOutputStream());
+		fromReceiver = new ObjectInputStream(socket.getInputStream());
+	    }
+
+	    Socket socket1 = new Socket("harlem", 10495);
+	    if (("harpoon" + Arizona).equals(computerName)) {
+		toSender = new ObjectOutputStream(socket1.getOutputStream());
+		fromSender = new ObjectInputStream(socket1.getInputStream());
+	    } else {
+		toReceiver = new ObjectOutputStream(socket1.getOutputStream());
+		fromReceiver = new ObjectInputStream(socket1.getInputStream());
+	    }
+
+	}
+
+	ListenForClientUpdates listener = new ListenForClientUpdates();
+	// TODO 6: Start a new Thread that reads from the server
+	// Note: Need setDaemon when started with a JavaFX App, or it
+	// crashes.
+	Thread thread = new Thread(listener);
+	thread.setDaemon(true);
+	thread.start();
+
+	ListenForClientUpdates listener2 = new ListenForClientUpdates();
+	// TODO 6: Start a new Thread that reads from the server
+	// Note: Need setDaemon when started with a JavaFX App, or it
+	// crashes.
+	Thread thread1 = new Thread(listener);
+	thread1.setDaemon(true);
+	thread1.start();
+    }
+
+    public static Rank convertToRank(int c) {
+	Rank requiredRank = null;
+
+	for (Rank r : Rank.values()) {
+	    if (c == r.getValue()) {
+		requiredRank = r;
+		break;
 	    }
 	}
+
+	return requiredRank;
     }
 
-    private void askPlayer(int pNumber, int cardNumber) {
-	Command cmd = new Command(NetworkCommand.GOFISHREQ, pNumber, cardNumber);
-	for (int i = 0; i < neighbors.size(); i++) {
-	    if (i == index)
-		continue;
+    private static void askPlayer(int pNumber, int cardNumber) {
+
+	Command cmd = new Command(NetworkCommand.GOFISHREQ, computerName, getName(pNumber), convertToRank(cardNumber));
+	try {
+	    toSender.writeObject(cmd);
+	} catch (IOException e) {
+	    // TODO Auto-generated catch block
+	    e.printStackTrace();
 	}
     }
 
-    private boolean isValid(int cardNumber) {
-	// TODO Auto-generated method stub
-	return false;
+    private static boolean isValid(int cardNumber) {
+	if (cardNumber < 2 || cardNumber > 14)
+	    return false;
+	return true;
     }
 
-    private void printOptions() {
+    private static void printOptions() {
 	// TODO Auto-generated method stub
 
     }
 
-    private void makeServerConnection() {
+    private static void makeServerConnection() {
 	// Our server is on our computer, but make sure to use the same port.
 	try {
 	    socketFromServer = new Socket(Address, 10495);
@@ -195,45 +295,67 @@ public class Player {
 	}
     }
 
-    private class ListenForClientUpdates extends Task<Object> {
+    private static class ListenForClientUpdates extends Task<Object> {
 
 	@Override
 	public void run() {
 	    try {
 		while (true) {
-		    System.out.println("before reading object");
-		    Command input = (Command) inputFromServer.readObject();
-		    System.out.println("after reading object");
+		    Command input = (Command) fromReceiver.readObject();
+
+		    // parse the input
 		    NetworkCommand commandType = input.getCommand();
 		    Object param1 = input.getParam1();
 		    Object param2 = input.getParam2();
 		    Object param3 = input.getParam3();
 
 		    if (commandType == NetworkCommand.GOFISHREQ) {
-			int fromIndex = (int) param1;
-			int toIndex = (int) param2;
-			Rank cardRank = (Rank) param3;
+			String fromName = (String) param1;
+			String toName = (String) param2;
 
-			if(toIndex == index) {
-			    if()
+			if(computerName.equals(fromName)) {
+			    continue;
+			}
+			else if(computerName.equals(toName)) {
+			    Rank r = (Rank) param3;
+			    Vector<Card> returnCards = hand.get(r);
+			    hand.put(r, new Vector<Card>());
+			    Command cmd = new Command(NetworkCommand.GOFISHRES,param2, param1, returnCards);
+			    Command cmd2 = new Command(NetworkCommand.GOFISHREQ,param1, param2, param3);
+			    toSender.writeObject(cmd2);
+			    toSender.writeObject(cmd);
+
+			} else {
+			    System.out.println(param1 + " requested " + param3 + " from " + param2);
+			    Command cmd = new Command(NetworkCommand.GOFISHREQ,param1, param2, param3);
+			    toSender.writeObject(cmd);
 			}
 
-		    } else if (commandType == NetworkCommand.GAMEOVER) {
-			if (index == (int) param1)
-			    System.out.println("Congratulations!!!! You won!");
-			else
-			    System.out.println("Player " + (int) param1 + " won the game!");
-		    } else if (commandType == NetworkCommand.FIVECARDS) {
-			numCards = (int) param1;
+		    } else if (commandType == NetworkCommand.GOFISHRES) {
+			String fromName = (String) param1;
+			String toName = (String) param2;
 
-			System.out.println("You received " + numCards + " cards: ");
-			System.out.println(hand);
-		    } else if (commandType == NetworkCommand.ONECARD) {
-			numCards += 1;
-			hand.add((Card) param1);
+			if(computerName.equals(fromName)) {
+			    continue;
+			} else if(computerName.equals(toName)) {
+			    Vector<Card> neighborCards = (Vector<Card>) param3;
 
-			System.out.println("You received: " + (Card) param1);
-			System.out.println("New hand: \n" + hand);
+			    if(neighborCards.size() == 0) {
+				System.out.println(fromName + " didn't have any cards. Go Fish!");
+				askServerForOneCard();
+			    } else {
+				Card c = neighborCards.get(0);
+				Vector<Card> newCards = hand.get(c.getRank());
+				newCards.addAll(neighborCards);
+				hand.put(c.getRank(), newCards);
+			    }
+			}
+		    } else if (commandType == NetworkCommand.ENDTURN) {
+			String fromName = (String) param1;
+
+			if(computerName.equals(fromName)) {
+			    yourTurnMonitor.notify();
+			}
 		    }
 		}
 	    } catch (IOException ioe) {
@@ -241,7 +363,6 @@ public class Player {
 	    } catch (ClassNotFoundException cnfe) {
 		cnfe.printStackTrace();
 	    }
-	    System.out.println("CLOSED FOR BUSINESS");
 	}
 
 	@Override
@@ -251,7 +372,7 @@ public class Player {
 	}
     }
 
-    private class ListenForServerUpdates extends Task<Object> {
+    private static class ListenForServerUpdates extends Task<Object> {
 
 	@Override
 	public void run() {
@@ -303,20 +424,20 @@ public class Player {
 	    Vector<Card> cards = hand.get(c.getRank());
 	    cards.add(c);
 	    hand.put(c.getRank(), cards);
-	    if(cards.size() == 4)
+	    if (cards.size() == 4)
 		handleBook(c.getRank());
 	}
 
 	private void handleBook(Rank rank) {
-	    
+
 	}
 
 	private void initializeHand(Vector<Card> cards) {
-	    for(Card c: cards) {
+	    for (Card c : cards) {
 		Vector<Card> handVector = hand.get(c.getRank());
 		handVector.add(c);
 		hand.put(c.getRank(), handVector);
-		if(handVector.size() == 4)
+		if (handVector.size() == 4)
 		    handleBook(c.getRank());
 	    }
 	}
@@ -330,6 +451,35 @@ public class Player {
 
     private void setIndex(int num) {
 	this.index = num;
+    }
+
+    public static void askServerForOneCard() {
+	Command cmd = new Command(NetworkCommand.ONECARD);
+	try {
+	    outputToServer.writeObject(cmd);
+	} catch (IOException e) {
+	    e.printStackTrace();
+	}
+    }
+
+    private static String getName(int index) {
+	String name = "";
+
+	switch (index) {
+	case 1:
+	    name = "harbor";
+	    break;
+	case 2:
+	    name = "harmonica";
+	    break;
+	case 3:
+	    name = "harpoon";
+	    break;
+	case 4:
+	    name = "harlem";
+	    break;
+	}
+	return name + Arizona;
     }
 
 }
