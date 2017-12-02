@@ -5,7 +5,6 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.UnknownHostException;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Scanner;
 import java.util.Set;
@@ -27,9 +26,9 @@ public class Player {
     private static ServerSocket fromNeighbor;
     private static Vector<Socket> neighbors;
 
-    private static final String Address = "localhost";
-    private static String computerName = "";
     private static final String Arizona = ".cs.arizona.edu";
+    private static final String Address = "oxford" + Arizona;
+    private static String computerName = "";
 
     private static Scanner sc = new Scanner(System.in);
 
@@ -135,6 +134,7 @@ public class Player {
 
 	    Command cmd4 = new Command(NetworkCommand.ENDTURN, getNextPlayer());
 	    try {
+		toSender.reset();
 		toSender.writeObject(cmd4);
 	    } catch (IOException e) {
 		// TODO Auto-generated catch block
@@ -264,6 +264,7 @@ public class Player {
 
 	Command cmd = new Command(NetworkCommand.GOFISHREQ, computerName, getName(pNumber), convertToRank(cardNumber));
 	try {
+	    toSender.reset();
 	    toSender.writeObject(cmd);
 	} catch (IOException e) {
 	    // TODO Auto-generated catch block
@@ -327,12 +328,15 @@ public class Player {
 			    hand.put(r, new Vector<Card>());
 			    Command cmd = new Command(NetworkCommand.GOFISHRES, param2, param1, returnCards);
 			    Command cmd2 = new Command(NetworkCommand.GOFISHREQ, param1, param2, param3);
+			    toSender.reset();
 			    toSender.writeObject(cmd2);
+			    toSender.reset();
 			    toSender.writeObject(cmd);
 
 			} else {
 			    System.out.println(param1 + " requested " + param3 + " from " + param2);
 			    Command cmd = new Command(NetworkCommand.GOFISHREQ, param1, param2, param3);
+			    toSender.reset();
 			    toSender.writeObject(cmd);
 			}
 
@@ -451,6 +455,7 @@ public class Player {
 	private void handleBook(Rank rank) {
 	    // tell the server that you have a book
 	    try {
+		outputToServer.reset();
 		outputToServer.writeObject(new Command(NetworkCommand.BOOK, computerName, rank));
 	    } catch (IOException e) {
 		// TODO Auto-generated catch block
@@ -482,6 +487,7 @@ public class Player {
     public static void askServerForOneCard() {
 	Command cmd = new Command(NetworkCommand.ONECARD);
 	try {
+	    outputToServer.reset();
 	    outputToServer.writeObject(cmd);
 	} catch (IOException e) {
 	    e.printStackTrace();
@@ -517,6 +523,7 @@ public class Player {
 		books.add(r);
 		Command cmd = new Command(NetworkCommand.BOOK, computerName, r);
 		try {
+		    outputToServer.reset();
 		    outputToServer.writeObject(cmd);
 		} catch (IOException e) {
 		    // TODO Auto-generated catch block
