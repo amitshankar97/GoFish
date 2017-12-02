@@ -25,9 +25,13 @@ import java.io.Serializable;
  * 	param2: Player name (to)
  * 	param3: Vector<Card> or null(if no card was found)
  * 
+ * BOOK:
+ * 	param1: From computerName
+ * 	param2: Rank of the books' card
+ * 
  * @author amitshankar
  *
  */
 public enum NetworkCommand implements Serializable {
-    GOFISHREQ, GOFISHRES, INDEX, ONECARD, FIVECARDS, GAMEOVER, WELCOME, ENDTURN
+    GOFISHREQ, GOFISHRES, INDEX, ONECARD, FIVECARDS, GAMEOVER, BOOK, ENDTURN, OUTOFCARDS
 }

@@ -8,6 +8,7 @@ import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Scanner;
+import java.util.Set;
 import java.util.Vector;
 import javafx.concurrent.Task;
 
@@ -16,7 +17,7 @@ public class Player {
     private static int numCards;
 
     private static HashMap<Rank, Vector<Card>> hand;
-    private static Vector<Card> books;
+    private static Vector<Rank> books;
 
     // Connection variables
     private static Socket socketFromServer;
@@ -37,8 +38,10 @@ public class Player {
     private static ObjectOutputStream toReceiver;
     private static ObjectInputStream fromReceiver;
 
-    private static Object response = new Object();
+    private static Object clientResponse = new Object();
+    private static Object serverResponse = new Object();
     private static Object yourTurnMonitor = new Object();
+
     public static void main(String args[]) throws IOException {
 	initializeComputerName();
 	initializeBooksAndHand();
@@ -59,7 +62,6 @@ public class Player {
 	    myTurn();
 	    notMyTurn();
 	}
-
     }
 
     private static void initializeComputerName() {
@@ -79,7 +81,7 @@ public class Player {
 	}
 
 	// initialize the books
-	books = new Vector<Card>();
+	books = new Vector<Rank>();
     }
 
     public static void myTurn() {
@@ -95,29 +97,33 @@ public class Player {
 		int pNumber, cardNumber;
 
 		while (true) {
-		    System.out.print("Please enter the player you would like to request for a card: ");
+		    System.out.print("Please enter the player you would like to request for a card (1-4): ");
 		    pNumber = sc.nextInt();
-		    if (pNumber == index)
+
+		    if (getName(pNumber) == computerName) {
 			System.out.println("Sorry! You cannot select yourself");
-		    else if (pNumber > 4 || pNumber < 0)
+			continue;
+		    } else if (pNumber > 4 || pNumber < 0) {
 			System.out.println("Invalid player number.");
-		    else
+			continue;
+		    } else
 			break;
 		}
 
 		while (true) {
 		    System.out.print("Please enter the card you would like to request: ");
-		    printOptions();
+		    // printOptions();
 		    cardNumber = sc.nextInt();
 
 		    if (isValid(cardNumber)) {
 			askPlayer(pNumber, cardNumber);
 			try {
-			    response.wait();
+			    clientResponse.wait();
 			} catch (InterruptedException e) {
 			    // TODO Auto-generated catch block
 			    e.printStackTrace();
 			}
+			break;
 		    } else {
 			System.out.println("Sorry! That is not a valid choice.");
 		    }
@@ -126,7 +132,7 @@ public class Player {
 		System.out.println("Sorry! Didn't recognize the command.");
 		continue;
 	    }
-	    
+
 	    Command cmd4 = new Command(NetworkCommand.ENDTURN, getNextPlayer());
 	    try {
 		toSender.writeObject(cmd4);
@@ -142,7 +148,7 @@ public class Player {
 	    return "harmonica.cs.arizona.edu";
 	} else if ("harmonica.cs.arizona.edu".equals(computerName)) {
 	    return "harpoon.cs.arizona.edu";
-	}  else if ("harpoon.cs.arizona.edu".equals(computerName)) {
+	} else if ("harpoon.cs.arizona.edu".equals(computerName)) {
 	    return "harlem.cs.arizona.edu";
 	} else {
 	    return "harbor.cs.arizona.edu";
@@ -150,12 +156,12 @@ public class Player {
     }
 
     public static void notMyTurn() {
-	    try {
-		yourTurnMonitor.wait();
-	    } catch (InterruptedException e) {
-		// TODO Auto-generated catch block
-		e.printStackTrace();
-	    }
+	try {
+	    yourTurnMonitor.wait();
+	} catch (InterruptedException e) {
+	    // TODO Auto-generated catch block
+	    e.printStackTrace();
+	}
     }
 
     private static void makePlayerConnections() throws IOException {
@@ -313,21 +319,20 @@ public class Player {
 			String fromName = (String) param1;
 			String toName = (String) param2;
 
-			if(computerName.equals(fromName)) {
+			if (computerName.equals(fromName)) {
 			    continue;
-			}
-			else if(computerName.equals(toName)) {
+			} else if (computerName.equals(toName)) {
 			    Rank r = (Rank) param3;
 			    Vector<Card> returnCards = hand.get(r);
 			    hand.put(r, new Vector<Card>());
-			    Command cmd = new Command(NetworkCommand.GOFISHRES,param2, param1, returnCards);
-			    Command cmd2 = new Command(NetworkCommand.GOFISHREQ,param1, param2, param3);
+			    Command cmd = new Command(NetworkCommand.GOFISHRES, param2, param1, returnCards);
+			    Command cmd2 = new Command(NetworkCommand.GOFISHREQ, param1, param2, param3);
 			    toSender.writeObject(cmd2);
 			    toSender.writeObject(cmd);
 
 			} else {
 			    System.out.println(param1 + " requested " + param3 + " from " + param2);
-			    Command cmd = new Command(NetworkCommand.GOFISHREQ,param1, param2, param3);
+			    Command cmd = new Command(NetworkCommand.GOFISHREQ, param1, param2, param3);
 			    toSender.writeObject(cmd);
 			}
 
@@ -335,25 +340,36 @@ public class Player {
 			String fromName = (String) param1;
 			String toName = (String) param2;
 
-			if(computerName.equals(fromName)) {
+			if (computerName.equals(fromName)) {
 			    continue;
-			} else if(computerName.equals(toName)) {
+			} else if (computerName.equals(toName)) {
 			    Vector<Card> neighborCards = (Vector<Card>) param3;
 
-			    if(neighborCards.size() == 0) {
+			    if (neighborCards.size() == 0) {
 				System.out.println(fromName + " didn't have any cards. Go Fish!");
 				askServerForOneCard();
+				try {
+				    serverResponse.wait();
+				} catch (InterruptedException e) {
+				    // TODO Auto-generated catch block
+				    e.printStackTrace();
+				}
+				clientResponse.notify();
 			    } else {
 				Card c = neighborCards.get(0);
+				System.out.println("You recieved " + neighborCards.size() + " " + c.getRank() + " from "
+					+ fromName + "!");
 				Vector<Card> newCards = hand.get(c.getRank());
 				newCards.addAll(neighborCards);
 				hand.put(c.getRank(), newCards);
+				checkForBooks();
+				clientResponse.notify();
 			    }
 			}
 		    } else if (commandType == NetworkCommand.ENDTURN) {
 			String fromName = (String) param1;
 
-			if(computerName.equals(fromName)) {
+			if (computerName.equals(fromName)) {
 			    yourTurnMonitor.notify();
 			}
 		    }
@@ -386,9 +402,6 @@ public class Player {
 		    Object param2 = input.getParam2();
 		    Object param3 = input.getParam3();
 
-		    if (commandType == NetworkCommand.WELCOME) {
-			System.out.println("Waiting on other players....");
-		    }
 		    if (commandType == NetworkCommand.INDEX) {
 			index = (int) param1;
 			initializeHand((Vector<Card>) param2);
@@ -398,18 +411,26 @@ public class Player {
 			    System.out.println("Congratulations!!!! You won!");
 			else
 			    System.out.println("Player " + (int) param1 + " won the game!");
+			sc.close();
+			System.exit(0);
 		    } else if (commandType == NetworkCommand.FIVECARDS) {
 			numCards = (int) param1;
 			initializeHand((Vector<Card>) param2);
 			// check if there's a book
+			checkForBooks();
 			System.out.println("You received " + numCards + " cards: ");
 			System.out.println(hand);
 		    } else if (commandType == NetworkCommand.ONECARD) {
 			numCards += 1;
 			addOneCard((Card) param1);
+			checkForBooks();
+			serverResponse.notify();
 			// check if there's a book
 			System.out.println("You received: " + (Card) param1);
 			System.out.println("New hand: \n" + hand);
+		    } else if (commandType == NetworkCommand.OUTOFCARDS) {
+			System.out.println("There are no more cards remaining in the deck!");
+			serverResponse.notify();
 		    }
 		}
 	    } catch (IOException ioe) {
@@ -417,7 +438,6 @@ public class Player {
 	    } catch (ClassNotFoundException cnfe) {
 		cnfe.printStackTrace();
 	    }
-	    System.out.println("CLOSED FOR BUSINESS");
 	}
 
 	private void addOneCard(Card c) {
@@ -429,7 +449,13 @@ public class Player {
 	}
 
 	private void handleBook(Rank rank) {
-
+	    // tell the server that you have a book
+	    try {
+		outputToServer.writeObject(new Command(NetworkCommand.BOOK, computerName, rank));
+	    } catch (IOException e) {
+		// TODO Auto-generated catch block
+		e.printStackTrace();
+	    }
 	}
 
 	private void initializeHand(Vector<Card> cards) {
@@ -480,6 +506,24 @@ public class Player {
 	    break;
 	}
 	return name + Arizona;
+    }
+
+    public static void checkForBooks() {
+	Set<Rank> ranks = hand.keySet();
+
+	for (Rank r : ranks) {
+	    if (hand.get(r).size() == 4) {
+		System.out.println("You formed a book of " + r);
+		books.add(r);
+		Command cmd = new Command(NetworkCommand.BOOK, computerName, r);
+		try {
+		    outputToServer.writeObject(cmd);
+		} catch (IOException e) {
+		    // TODO Auto-generated catch block
+		    e.printStackTrace();
+		}
+	    }
+	}
     }
 
 }

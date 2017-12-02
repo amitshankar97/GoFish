@@ -5,6 +5,7 @@ import java.io.ObjectOutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Vector;
 
@@ -15,43 +16,49 @@ public class Server {
     private static List<ObjectOutputStream> players = new Vector<>();
     private static Vector<Socket> playerSockets = new Vector<>();
 
+    // player states
+    private static boolean playersDone[] = { false, false, false, false };
+    private static HashMap<String, Vector<Rank>> playerBooks = new HashMap<>();
+
     private static int playerCtr = 0;
 
     private static Vector<Card> deck;
 
     private static final int NUM_PLAYERS = 4;
 
-
     public static void main(String[] args) throws IOException {
 	serverSocket = new ServerSocket(10495);
 
 	setDeck();
-
+	initializeVariables();
 	// Setup the server to accept many clients
 	while (true) {
 	    Socket socket = serverSocket.accept();
 	    playerSockets.add(socket);
-	    
+
 	    System.out.println("New player connected.");
 
 	    ObjectOutputStream outputToClient = new ObjectOutputStream(socket.getOutputStream());
 	    ObjectInputStream inputFromClient = new ObjectInputStream(socket.getInputStream());
 
-	    players.add(new ObjectOutputStream(outputToClient)); // add the stream
+	    players.add(new ObjectOutputStream(outputToClient)); // add the
+								 // stream
 	    // outputToClient.writeObject(new Command(NetworkCommand.WELCOME));
 
-
-	    // Start the loop that reads any Client's writeObject in the background in a 
-	    // different Thread so this program can also wait for new Client connections.
-	    // This thread allows the Server to wait for each client's writing of a String message.
+	    // Start the loop that reads any Client's writeObject in the
+	    // background in a
+	    // different Thread so this program can also wait for new Client
+	    // connections.
+	    // This thread allows the Server to wait for each client's writing
+	    // of a String message.
 	    // TODO 2: Start a new ClientHandler in a new Thread
-	    ClientHandler clientHandler = new ClientHandler(inputFromClient, players.get(playerCtr));
+	    ClientHandler clientHandler = new ClientHandler(inputFromClient, players.get(playerCtr), socket);
 	    Thread thread = new Thread(clientHandler);
 	    thread.start();
 	    playerCtr++;
 
-	    if(playerCtr == NUM_PLAYERS) {
-		for(int i = 0; i < NUM_PLAYERS; i++) {
+	    if (playerCtr == NUM_PLAYERS) {
+		for (int i = 0; i < NUM_PLAYERS; i++) {
 		    System.out.println("i: " + i);
 		    Command cmd = new Command(NetworkCommand.INDEX, i, buildHand(), playerSockets);
 		    players.get(i).writeObject(cmd);
@@ -60,15 +67,23 @@ public class Server {
 	}
     }
 
+    private static void initializeVariables() {
+	playerBooks.put("harbor.cs.arizona.edu", new Vector<Rank>());
+	playerBooks.put("harpoon.cs.arizona.edu", new Vector<Rank>());
+	playerBooks.put("harmonica.cs.arizona.edu", new Vector<Rank>());
+	playerBooks.put("harlem.cs.arizona.edu", new Vector<Rank>());
+    }
 
     private static class ClientHandler implements Runnable {
 
 	private ObjectInputStream input;
 	private ObjectOutputStream output;
+	private Socket socket;
 
-	public ClientHandler(ObjectInputStream input, ObjectOutputStream output) {
+	public ClientHandler(ObjectInputStream input, ObjectOutputStream output, Socket socket) {
 	    this.output = output;
 	    this.input = input;
+	    this.socket = socket;
 	}
 
 	@Override
@@ -76,7 +91,7 @@ public class Server {
 	    // TODO 3: Complete this run method with a while(true) loop
 	    // to read any new messages from the server. When a new read
 	    // happens, write the new message to all Clients
-	    while(true) {
+	    while (true) {
 		Command cmd = null;
 		try {
 		    if (input == null)
@@ -85,56 +100,128 @@ public class Server {
 		    cmd = (Command) input.readObject();
 		    System.out.println("Server after client write");
 		    NetworkCommand commandType = cmd.getCommand();
-		    
-		    if(commandType == NetworkCommand.FIVECARDS) {
-			Command returnCommand = new Command(NetworkCommand.FIVECARDS, buildHand(), null, null);
-			output.reset();
-			output.writeObject(returnCommand);
-		    } else if(commandType == NetworkCommand.ONECARD) {
-			Collections.shuffle(deck);
-			Card returnCard = deck.size() > 0 ? deck.remove(0) : null;
-			Command returnCommand = new Command(NetworkCommand.ONECARD, returnCard, null, null);
-			
-			output.reset();
-			output.writeObject(returnCommand);
-		    } else if(commandType == NetworkCommand.GAMEOVER) {
-			/**
-			 * 1. Check if all the players have 0 cards
-			 * 2. Check if the deck has 0 cards
-			 * 3. Check the number of books for each player
-			 * 4. If there's a tie, compare the books
-			 */
-			output.reset();
-		    }
-		    
-		} catch(EOFException e) {e.printStackTrace();}
-		  catch(IOException ioe) {
+		    Object param1 = cmd.getParam1();
+		    Object param2 = cmd.getParam2();
+		    Object param3 = cmd.getParam3();
+
+		    if (commandType == NetworkCommand.FIVECARDS) {
+			if (deck.size() > 0) {
+			    Vector<Card> hand = buildHand();
+			    Command returnCommand = new Command(NetworkCommand.FIVECARDS, hand.size(), hand, null);
+			    output.reset();
+			    output.writeObject(returnCommand);
+			} else {
+			    Command noCards = new Command(NetworkCommand.OUTOFCARDS);
+			    output.reset();
+			    output.writeObject(noCards);
+			}
+		    } else if (commandType == NetworkCommand.ONECARD) {
+			if (deck.size() > 0) {
+			    Collections.shuffle(deck);
+			    Card returnCard = deck.remove(0);
+			    Command returnCommand = new Command(NetworkCommand.ONECARD, returnCard, null, null);
+
+			    output.reset();
+			    output.writeObject(returnCommand);
+			} else {
+			    Command noCards = new Command(NetworkCommand.OUTOFCARDS);
+			    output.reset();
+			    output.writeObject(noCards);
+			}
+		    } else if (commandType == NetworkCommand.GAMEOVER) {
+			markPlayerAsDone(socket.getInetAddress().getHostAddress());
+			boolean gameOver = isGameOver();
+			if (gameOver) {
+			    signalTheGameIsOver();
+			}
+		    } else if (commandType == NetworkCommand.BOOK) {
+			String fromPlayer = (String) param1;
+			Rank bookRank = (Rank) param2;
+			Vector<Rank> books = playerBooks.get(fromPlayer);
+			books.add(bookRank);
+			playerBooks.put(fromPlayer, books);
+		    } 
+
+		} catch (EOFException e) {
+		    e.printStackTrace();
+		} catch (IOException ioe) {
 		    System.out.println("client broke out");
 		    ioe.printStackTrace();
 		    break; // break from the thread when client is closed
+		} catch (ClassNotFoundException cnfe) {
 		}
-		catch(ClassNotFoundException cnfe) {}
 	    }
 	}
 
-	/*// TODO 4: This method is used to write message to all output streams
-	private void writeVectorToClients(Vector<PaintObject> objects) {
-	    for(ObjectOutputStream stream: outputStreams) {
-		try {
-		    stream.reset(); // reset before sending the new list of objects
-		    stream.writeObject(objects); // write vector to all output streams
-		} catch (IOException e) {
-		} catch (ConcurrentModificationException e) {
-		}
-	    }
-	}*/
-	
+	/*
+	 * // TODO 4: This method is used to write message to all output streams
+	 * private void writeVectorToClients(Vector<PaintObject> objects) {
+	 * for(ObjectOutputStream stream: outputStreams) { try { stream.reset();
+	 * // reset before sending the new list of objects
+	 * stream.writeObject(objects); // write vector to all output streams }
+	 * catch (IOException e) { } catch (ConcurrentModificationException e) {
+	 * } } }
+	 */
+
     }
 
+    public static void markPlayerAsDone(String name) {
+	if ("harbor.cs.arizona.edu".equals(name)) {
+	    playersDone[0] = true;
+	} else if ("harmonica.cs.arizona.edu".equals(name)) {
+	    playersDone[1] = true;
+	} else if ("harpoon.cs.arizona.edu".equals(name)) {
+	    playersDone[2] = true;
+	} else {
+	    playersDone[3] = true;
+	}
+    }
 
+    public static boolean isGameOver() {
+	for (boolean b: playersDone) {
+	    if (b == false)
+		return false;
+	}
+	return true;
+    }
+    
+    public static void signalTheGameIsOver() {
+	for (ObjectOutputStream stream : players) {
+	    try {
+		stream.reset();
+		Command gameOver = new Command(NetworkCommand.GAMEOVER, getWinner());
+		stream.writeObject(gameOver);
+	    } catch (IOException e) {
+		e.printStackTrace();
+	    }
+	}
+    }
 
+    private static String getWinner() {
+	int maxBooks = -1;
+	String winnerName = "";
+	String playerNames[] = { "harbor.cs.arizona.edu", "harpoon.cs.arizona.edu", "harlem.cs.arizona.edu",
+		"harmonica.cs.arizona.edu" };
 
+	// TODO: initialize the hashmap
+	for (String name : playerNames) {
+	    Vector<Rank> books = playerBooks.get(name); // books for that player
+	    if (books.size() > maxBooks) {
+		winnerName = name;
+		maxBooks = books.size();
+	    } else if (books.size() == maxBooks) {
+		Vector<Rank> winnersBooks = playerBooks.get(winnerName);
+		Rank winnerRank = Collections.max(winnersBooks);
+		Rank currentRank = Collections.max(books);
 
+		if (currentRank.getValue() > winnerRank.getValue()) {
+		    winnerName = name;
+		    maxBooks = books.size();
+		}
+	    }
+	}
+	return winnerName;
+    }
 
     /**
      * 
@@ -147,7 +234,6 @@ public class Server {
 	    hand.add(deck.remove(0));
 	    Collections.shuffle(deck);
 	}
-
 
 	return hand;
     }
