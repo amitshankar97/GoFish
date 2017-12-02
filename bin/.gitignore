@@ -2,3 +2,4 @@
 /NetworkCommand.class
 /Player$ListenForServerUpdates.class
 /Server$ClientHandler.class
+/Player$ListenForClientUpdates.class

@@ -15,13 +15,19 @@ import java.io.Serializable;
  * FIVECARDS:
  * 	param1: List<Card> hand
  * 
- * GOFISH:
- * 	param1: Player number
- * 	param2: card number
+ * GOFISHREQ:
+ * 	param1: Player name (from)
+ * 	param2: Player name (to)
+ * 	param3: Rank
+ * 
+ * GOFISHRES:
+ * 	param1: Player name (from)
+ * 	param2: Player name (to)
+ * 	param3: Vector<Card> or null(if no card was found)
  * 
  * @author amitshankar
  *
  */
 public enum NetworkCommand implements Serializable {
-    GOFISH, INDEX, ONECARD, FIVECARDS, GAMEOVER, WELCOME
+    GOFISHREQ, GOFISHRES, INDEX, ONECARD, FIVECARDS, GAMEOVER, WELCOME, ENDTURN
 }
