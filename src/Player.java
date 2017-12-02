@@ -27,7 +27,7 @@ public class Player {
     private static Vector<Socket> neighbors;
 
     private static final String Arizona = ".cs.arizona.edu";
-    private static final String Address = "oxford" + Arizona;
+    private static final String Address = "harpsichord" + Arizona;
     private static String computerName = "";
 
     private static Scanner sc = new Scanner(System.in);
@@ -39,16 +39,15 @@ public class Player {
 
     private static Object clientResponse = new Object();
     private static Object serverResponse = new Object();
-    private static Object yourTurnMonitor = new Object();
+    private static Object yourTurnMonitor;
 
     public static void main(String args[]) throws IOException {
 	initializeComputerName();
 	initializeBooksAndHand();
 	makeServerConnection();
 	makePlayerConnections();
-
+	yourTurnMonitor = new Object();
 	System.out.println("Welcome to Go Fish! Here are the possible commands:");
-	System.out.println("1) gofish\n2) quit");
 
 	if ("harbor".equals(computerName)) {
 	    myTurn();
@@ -70,6 +69,7 @@ public class Player {
 	    // TODO Auto-generated catch block
 	    e.printStackTrace();
 	}
+	System.out.println("Your name is " + computerName);
     }
 
     private static void initializeBooksAndHand() {
@@ -81,9 +81,11 @@ public class Player {
 
 	// initialize the books
 	books = new Vector<Rank>();
+	System.out.println("Books initialized");
     }
 
-    public static void myTurn() {
+    public synchronized static void myTurn() {
+	System.out.println("1) gofish\n2) quit\n3) hand");
 	while (sc.hasNext()) {
 	    Command cmd = null;
 	    String userString = sc.nextLine();
@@ -127,6 +129,8 @@ public class Player {
 			System.out.println("Sorry! That is not a valid choice.");
 		    }
 		}
+	    } else if ("hand".equals(userString)) {
+		System.out.println(hand);
 	    } else {
 		System.out.println("Sorry! Didn't recognize the command.");
 		continue;
@@ -140,13 +144,16 @@ public class Player {
 		// TODO Auto-generated catch block
 		e.printStackTrace();
 	    }
+
+	    System.out.println("1) gofish\n2) quit\n3) hand");
 	}
+
     }
 
     private static Object getNextPlayer() {
 	if ("harbor.cs.arizona.edu".equals(computerName)) {
-	    return "harmonica.cs.arizona.edu";
-	} else if ("harmonica.cs.arizona.edu".equals(computerName)) {
+	    return "harvard.cs.arizona.edu";
+	} else if ("harvard.cs.arizona.edu".equals(computerName)) {
 	    return "harpoon.cs.arizona.edu";
 	} else if ("harpoon.cs.arizona.edu".equals(computerName)) {
 	    return "harlem.cs.arizona.edu";
@@ -156,11 +163,13 @@ public class Player {
     }
 
     public static void notMyTurn() {
-	try {
-	    yourTurnMonitor.wait();
-	} catch (InterruptedException e) {
-	    // TODO Auto-generated catch block
-	    e.printStackTrace();
+	synchronized (yourTurnMonitor) {
+	    try {
+		yourTurnMonitor.wait();
+	    } catch (InterruptedException e) {
+		// TODO Auto-generated catch block
+		e.printStackTrace();
+	    }
 	}
     }
 
@@ -168,24 +177,27 @@ public class Player {
 
 	int connectionsMade = 0;
 
-	if ("harlem".equals(computerName) || "harmonica".equals(computerName)) {
-	    fromNeighbor = new ServerSocket(10495);
+	if (("harlem" + Arizona).equals(computerName) || ("harvard" + Arizona).equals(computerName)) {
+	    fromNeighbor = new ServerSocket(10495, 5);
 	    int count = 1;
 	    System.out.println(computerName + " listening on port 10495");
 	    while (true) {
 		Socket socket = fromNeighbor.accept();
-		String connectorName = socket.getInetAddress().getHostAddress();
+		String connectorName = socket.getInetAddress().getHostName();
+		System.out.println("connectorName: " + connectorName);
 
-		// if we are harmonica
-		if (("harmonica" + Arizona).equals(computerName)) {
+		// if we are harvard
+		if (("harvard" + Arizona).equals(computerName)) {
 		    // if we are connection to harbor
 		    if (("harbor" + Arizona).equals(connectorName)) {
 			toReceiver = new ObjectOutputStream(socket.getOutputStream());
 			fromReceiver = new ObjectInputStream(socket.getInputStream());
+			System.out.println("Connected to harbor");
 		    } else {
 			// if we are talking harpoon
 			toSender = new ObjectOutputStream(socket.getOutputStream());
 			fromSender = new ObjectInputStream(socket.getInputStream());
+			System.out.println("Connected to harpoon");
 		    }
 		} else {
 		    // if we are harlem
@@ -193,10 +205,12 @@ public class Player {
 		    if (("harpoon" + Arizona).equals(connectorName)) {
 			toReceiver = new ObjectOutputStream(socket.getOutputStream());
 			fromReceiver = new ObjectInputStream(socket.getInputStream());
+			System.out.println("Connected to harpoon");
 		    } else {
 			// if we are talking harbor
 			toSender = new ObjectOutputStream(socket.getOutputStream());
 			fromSender = new ObjectInputStream(socket.getInputStream());
+			System.out.println("Connected to harbor");
 		    }
 		}
 
@@ -210,7 +224,7 @@ public class Player {
 	} else {
 
 	    // if you are a connector
-	    Socket socket = new Socket("harmonica", 10495);
+	    Socket socket = new Socket("harvard" + Arizona, 10495);
 	    if (("harbor" + Arizona).equals(computerName)) {
 		toSender = new ObjectOutputStream(socket.getOutputStream());
 		fromSender = new ObjectInputStream(socket.getInputStream());
@@ -218,8 +232,9 @@ public class Player {
 		toReceiver = new ObjectOutputStream(socket.getOutputStream());
 		fromReceiver = new ObjectInputStream(socket.getInputStream());
 	    }
+	    System.out.println("Connected to harvard");
 
-	    Socket socket1 = new Socket("harlem", 10495);
+	    Socket socket1 = new Socket("harlem" + Arizona, 10495);
 	    if (("harpoon" + Arizona).equals(computerName)) {
 		toSender = new ObjectOutputStream(socket1.getOutputStream());
 		fromSender = new ObjectInputStream(socket1.getInputStream());
@@ -227,7 +242,7 @@ public class Player {
 		toReceiver = new ObjectOutputStream(socket1.getOutputStream());
 		fromReceiver = new ObjectInputStream(socket1.getInputStream());
 	    }
-
+	    System.out.println("Connected to harlem");
 	}
 
 	ListenForClientUpdates listener = new ListenForClientUpdates();
@@ -284,12 +299,13 @@ public class Player {
     }
 
     private static void makeServerConnection() {
+	System.out.println("Starting to connect to " + Address + "....");
 	// Our server is on our computer, but make sure to use the same port.
 	try {
-	    socketFromServer = new Socket(Address, 10495);
+	    socketFromServer = new Socket(Address, 11495);
 	    outputToServer = new ObjectOutputStream(socketFromServer.getOutputStream());
 	    inputFromServer = new ObjectInputStream(socketFromServer.getInputStream());
-
+	    System.out.println("Connected to server");
 	    // SeverListener will have a while(true) loop
 	    ListenForServerUpdates listener = new ListenForServerUpdates();
 	    // TODO 6: Start a new Thread that reads from the server
@@ -305,7 +321,8 @@ public class Player {
     private static class ListenForClientUpdates extends Task<Object> {
 
 	@Override
-	public void run() {
+	public synchronized void run() {
+	    System.out.println(computerName + " listener started!");
 	    try {
 		while (true) {
 		    Command input = (Command) fromReceiver.readObject();
@@ -407,9 +424,10 @@ public class Player {
 		    Object param3 = input.getParam3();
 
 		    if (commandType == NetworkCommand.INDEX) {
-			index = (int) param1;
-			initializeHand((Vector<Card>) param2);
-			System.out.println("Welcome to Go Fish! You are Player " + index);
+			initializeHand((Vector<Card>) param1);
+			System.out.println("Welcome to Go Fish, " + computerName + "!");
+			System.out.println("Here is your hand: ");
+			System.out.println(hand);
 		    } else if (commandType == NetworkCommand.GAMEOVER) {
 			if (index == (int) param1)
 			    System.out.println("Congratulations!!!! You won!");
@@ -502,7 +520,7 @@ public class Player {
 	    name = "harbor";
 	    break;
 	case 2:
-	    name = "harmonica";
+	    name = "harvard";
 	    break;
 	case 3:
 	    name = "harpoon";

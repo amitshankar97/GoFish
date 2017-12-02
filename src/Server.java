@@ -2,6 +2,7 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.Collections;
@@ -27,16 +28,17 @@ public class Server {
     private static final int NUM_PLAYERS = 4;
 
     public static void main(String[] args) throws IOException {
-	serverSocket = new ServerSocket(10495);
-
+	serverSocket = new ServerSocket(11495, 5);
+	System.out.println("Server Socket created for " +  (InetAddress.getLocalHost().getHostAddress()) + ".");
 	setDeck();
 	initializeVariables();
 	// Setup the server to accept many clients
 	while (true) {
+	    System.out.println("Waiting to connect with player " + playerCtr + "...");
 	    Socket socket = serverSocket.accept();
 	    playerSockets.add(socket);
 
-	    System.out.println("New player connected.");
+	    System.out.println(socket.getInetAddress().getHostAddress() + " has connected.");
 
 	    ObjectOutputStream outputToClient = new ObjectOutputStream(socket.getOutputStream());
 	    ObjectInputStream inputFromClient = new ObjectInputStream(socket.getInputStream());
@@ -58,9 +60,10 @@ public class Server {
 	    playerCtr++;
 
 	    if (playerCtr == NUM_PLAYERS) {
+		System.out.println("All four players have been connected.");
 		for (int i = 0; i < NUM_PLAYERS; i++) {
 		    System.out.println("i: " + i);
-		    Command cmd = new Command(NetworkCommand.INDEX, i, buildHand(), playerSockets);
+		    Command cmd = new Command(NetworkCommand.INDEX, buildHand());
 		    players.get(i).writeObject(cmd);
 		}
 	    }
@@ -70,7 +73,7 @@ public class Server {
     private static void initializeVariables() {
 	playerBooks.put("harbor.cs.arizona.edu", new Vector<Rank>());
 	playerBooks.put("harpoon.cs.arizona.edu", new Vector<Rank>());
-	playerBooks.put("harmonica.cs.arizona.edu", new Vector<Rank>());
+	playerBooks.put("harvard.cs.arizona.edu", new Vector<Rank>());
 	playerBooks.put("harlem.cs.arizona.edu", new Vector<Rank>());
     }
 
@@ -91,6 +94,7 @@ public class Server {
 	    // TODO 3: Complete this run method with a while(true) loop
 	    // to read any new messages from the server. When a new read
 	    // happens, write the new message to all Clients
+	    
 	    while (true) {
 		Command cmd = null;
 		try {
@@ -168,7 +172,7 @@ public class Server {
     public static void markPlayerAsDone(String name) {
 	if ("harbor.cs.arizona.edu".equals(name)) {
 	    playersDone[0] = true;
-	} else if ("harmonica.cs.arizona.edu".equals(name)) {
+	} else if ("harvard.cs.arizona.edu".equals(name)) {
 	    playersDone[1] = true;
 	} else if ("harpoon.cs.arizona.edu".equals(name)) {
 	    playersDone[2] = true;
@@ -201,7 +205,7 @@ public class Server {
 	int maxBooks = -1;
 	String winnerName = "";
 	String playerNames[] = { "harbor.cs.arizona.edu", "harpoon.cs.arizona.edu", "harlem.cs.arizona.edu",
-		"harmonica.cs.arizona.edu" };
+		"harvard.cs.arizona.edu" };
 
 	// TODO: initialize the hashmap
 	for (String name : playerNames) {
