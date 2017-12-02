@@ -40,32 +40,64 @@ public class Player {
     private static Object clientResponse;
     private static Object serverResponse;
     private static Object yourTurnMonitor;
-
-    public static boolean lock; // lock for printing
+    private static Object lock;
 
     public static void main(String args[]) throws IOException {
 	initializeComputerName();
 	initializeBooksAndHand();
-	makeServerConnection();
-	makePlayerConnections();
+
+
 	yourTurnMonitor = new Object();
 	clientResponse = new Object();
 	serverResponse = new Object();
+	lock = new Object();
 
-	while(lock) {
-	    continue;
+
+	makeServerConnection();
+	makePlayerConnections();
+
+	synchronized(lock) {
+	    try {
+		lock.wait();
+	    } catch (InterruptedException e) {
+		// TODO Auto-generated catch block
+		e.printStackTrace();
+	    }
 	}
-	
+
+
 	if (("harbor" + Arizona).equals(computerName)) {
 	    myTurn();
-	    notMyTurn();
+	    synchronized (yourTurnMonitor) {
+		try {
+		    yourTurnMonitor.wait();
+		} catch (InterruptedException e) {
+		    // TODO Auto-generated catch block
+		    e.printStackTrace();
+		}
+		System.out.println("Monitor was signaled!");
+	    }
 	} else {
-	    notMyTurn();
+	    synchronized (yourTurnMonitor) {
+		try {
+		    yourTurnMonitor.wait();
+		} catch (InterruptedException e) {
+		    // TODO Auto-generated catch block
+		    e.printStackTrace();
+		}
+	    }
 	}
 
 	while (true) {
 	    myTurn();
-	    notMyTurn();
+	    synchronized (yourTurnMonitor) {
+		try {
+		    yourTurnMonitor.wait();
+		} catch (InterruptedException e) {
+		    // TODO Auto-generated catch block
+		    e.printStackTrace();
+		}
+	    }
 	}
     }
 
@@ -133,6 +165,7 @@ public class Player {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
 			    }
+			    System.out.println("The client has responded!!! HECK YEAH");
 			}
 		    } else {
 			System.out.println("Sorry! That is not a valid choice.");
@@ -147,7 +180,8 @@ public class Player {
 	    }
 	    System.out.println("1) gofish\n2) quit\n3) hand");
 	}
-
+	printHand();
+	System.out.println("Your turn has ended");
 	Command cmd4 = new Command(NetworkCommand.ENDTURN, getNextPlayer());
 	try {
 	    toSender.reset();
@@ -167,17 +201,6 @@ public class Player {
 	    return "harlem.cs.arizona.edu";
 	} else {
 	    return "harbor.cs.arizona.edu";
-	}
-    }
-
-    public static void notMyTurn() {
-	synchronized (yourTurnMonitor) {
-	    try {
-		yourTurnMonitor.wait();
-	    } catch (InterruptedException e) {
-		// TODO Auto-generated catch block
-		e.printStackTrace();
-	    }
 	}
     }
 
@@ -254,7 +277,7 @@ public class Player {
 	    System.out.println("Connected to harlem");
 	}
 
-	ListenForClientUpdates listener = new ListenForClientUpdates(clientResponse);
+	ListenForClientUpdates listener = new ListenForClientUpdates(clientResponse, yourTurnMonitor);
 	// TODO 6: Start a new Thread that reads from the server
 	// Note: Need setDaemon when started with a JavaFX App, or it
 	// crashes.
@@ -262,7 +285,7 @@ public class Player {
 	thread.setDaemon(true);
 	thread.start();
 
-	ListenForClientUpdates listener2 = new ListenForClientUpdates(clientResponse);
+	ListenForClientUpdates listener2 = new ListenForClientUpdates(clientResponse, yourTurnMonitor);
 	// TODO 6: Start a new Thread that reads from the server
 	// Note: Need setDaemon when started with a JavaFX App, or it
 	// crashes.
@@ -317,7 +340,7 @@ public class Player {
 	    inputFromServer = new ObjectInputStream(socketFromServer.getInputStream());
 	    System.out.println("Connected to server");
 	    // SeverListener will have a while(true) loop
-	    ListenForServerUpdates listener = new ListenForServerUpdates();
+	    ListenForServerUpdates listener = new ListenForServerUpdates(lock, serverResponse);
 	    // TODO 6: Start a new Thread that reads from the server
 	    // Note: Need setDaemon when started with a JavaFX App, or it
 	    // crashes.
@@ -331,14 +354,15 @@ public class Player {
     private static class ListenForClientUpdates extends Task<Object> {
 
 	private Object clientResponse;
+	private Object yourTurnMonitor;
 
-	public ListenForClientUpdates(Object clientReponse) {
+	public ListenForClientUpdates(Object clientResponse, Object yourTurnMonitor) {
 	    this.clientResponse = clientResponse;
+	    this.yourTurnMonitor = yourTurnMonitor;
 	}
 
 	@Override
 	public synchronized void run() {
-	    System.out.println(computerName + " listener started!");
 	    try {
 		while (true) {
 		    Command input = (Command) fromReceiver.readObject();
@@ -357,6 +381,7 @@ public class Player {
 			    continue;
 			} else if (computerName.equals(toName)) {
 			    Rank r = (Rank) param3;
+			    System.out.println("I was asked for " + r);
 			    Vector<Card> returnCards = hand.get(r);
 			    hand.put(r, new Vector<Card>());
 			    Command cmd = new Command(NetworkCommand.GOFISHRES, param2, param1, returnCards);
@@ -385,14 +410,18 @@ public class Player {
 			    if (neighborCards.size() == 0) {
 				System.out.println(fromName + " didn't have any cards. Go Fish!");
 				askServerForOneCard();
-				try {
-				    serverResponse.wait();
-				} catch (InterruptedException e) {
-				    // TODO Auto-generated catch block
-				    e.printStackTrace();
+				
+				synchronized(serverResponse) {
+				    try {
+					serverResponse.wait();
+				    } catch (InterruptedException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				    }
 				}
-				synchronized (clientResponse) {
-				    clientResponse.notify();
+				
+				synchronized (this.clientResponse) {
+				    this.clientResponse.notify();
 				}
 			    } else {
 				Card c = neighborCards.get(0);
@@ -402,18 +431,27 @@ public class Player {
 				newCards.addAll(neighborCards);
 				hand.put(c.getRank(), newCards);
 				checkForBooks();
-				synchronized (clientResponse) {
-				    clientResponse.notify();
+				synchronized (this.clientResponse) {
+				    this.clientResponse.notify();
 				}
 			    }
+			} else {
+			    System.out.println(param1 + " gave " + param2 + " a " + param3);
+			    toSender.reset();
+			    toSender.writeObject(input);
 			}
 		    } else if (commandType == NetworkCommand.ENDTURN) {
 			String fromName = (String) param1;
 
 			if (computerName.equals(fromName)) {
-			    synchronized (yourTurnMonitor) {
-				yourTurnMonitor.notify();
+			    System.out.println("It's my turn!! WOOT WOOT");
+			    synchronized (this.yourTurnMonitor) {
+				this.yourTurnMonitor.notify();
 			    }
+			    System.out.println("WE Signaled the monitor");
+			} else {
+			    toSender.reset();
+			    toSender.writeObject(input);
 			}
 		    }
 		}
@@ -434,6 +472,14 @@ public class Player {
 
     private static class ListenForServerUpdates extends Task<Object> {
 
+	private Object lock;
+	private Object serverResponse;
+
+	public ListenForServerUpdates(Object lock, Object serverResponse) {
+	    this.lock = lock;
+	    this.serverResponse = serverResponse;
+	}
+
 	@Override
 	public void run() {
 	    try {
@@ -449,7 +495,9 @@ public class Player {
 			System.out.println("\n\nWelcome to Go Fish, " + computerName + "!");
 			System.out.println("Here is your hand: ");
 			printHand();
-			lock = false;
+			synchronized(lock) {
+			    lock.notify();
+			}
 		    } else if (commandType == NetworkCommand.GAMEOVER) {
 			if (index == (int) param1)
 			    System.out.println("Congratulations!!!! You won!");
@@ -462,18 +510,23 @@ public class Player {
 			initializeHand((Vector<Card>) param2);
 			// check if there's a book
 			checkForBooks();
-			System.out.println("You received " + numCards + " cards: ");
+			System.out.println("You received " + numCards + " cards from the server.");
+			System.out.print("New hand: ");
 			printHand();
+			System.out.println();
 		    } else if (commandType == NetworkCommand.ONECARD) {
 			numCards += 1;
 			addOneCard((Card) param1);
 			checkForBooks();
-			synchronized (serverResponse) {
-			    serverResponse.notify();
+			synchronized (this.serverResponse) {
+			    this.serverResponse.notify();
 			}
 			// check if there's a book
-			System.out.println("You received: " + (Card) param1);
-			System.out.println("New hand: \n" + hand);
+
+			System.out.println("You received: " + (Card) param1 + " from the deck!");
+			System.out.print("New hand: ");
+			printHand();
+			System.out.println();
 		    } else if (commandType == NetworkCommand.OUTOFCARDS) {
 			System.out.println("There are no more cards remaining in the deck!");
 			synchronized (serverResponse) {
@@ -527,6 +580,7 @@ public class Player {
     private void setIndex(int num) {
 	this.index = num;
     }
+
 
     public static void askServerForOneCard() {
 	Command cmd = new Command(NetworkCommand.ONECARD);
