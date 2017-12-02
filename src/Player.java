@@ -37,9 +37,11 @@ public class Player {
     private static ObjectOutputStream toReceiver;
     private static ObjectInputStream fromReceiver;
 
-    private static Object clientResponse = new Object();
-    private static Object serverResponse = new Object();
+    private static Object clientResponse;
+    private static Object serverResponse;
     private static Object yourTurnMonitor;
+
+    public static boolean lock; // lock for printing
 
     public static void main(String args[]) throws IOException {
 	initializeComputerName();
@@ -47,9 +49,14 @@ public class Player {
 	makeServerConnection();
 	makePlayerConnections();
 	yourTurnMonitor = new Object();
-	System.out.println("Welcome to Go Fish! Here are the possible commands:");
+	clientResponse = new Object();
+	serverResponse = new Object();
 
-	if ("harbor".equals(computerName)) {
+	while(lock) {
+	    continue;
+	}
+	
+	if (("harbor" + Arizona).equals(computerName)) {
 	    myTurn();
 	    notMyTurn();
 	} else {
@@ -85,6 +92,7 @@ public class Player {
     }
 
     public synchronized static void myTurn() {
+	System.out.println("Here are the possible commands:");
 	System.out.println("1) gofish\n2) quit\n3) hand");
 	while (sc.hasNext()) {
 	    Command cmd = null;
@@ -118,36 +126,36 @@ public class Player {
 
 		    if (isValid(cardNumber)) {
 			askPlayer(pNumber, cardNumber);
-			try {
-			    clientResponse.wait();
-			} catch (InterruptedException e) {
-			    // TODO Auto-generated catch block
-			    e.printStackTrace();
+			synchronized (clientResponse) {
+			    try {
+				clientResponse.wait();
+			    } catch (InterruptedException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			    }
 			}
-			break;
 		    } else {
 			System.out.println("Sorry! That is not a valid choice.");
 		    }
+		    break;
 		}
+		break;
 	    } else if ("hand".equals(userString)) {
-		System.out.println(hand);
+		printHand();
 	    } else {
 		System.out.println("Sorry! Didn't recognize the command.");
-		continue;
 	    }
-
-	    Command cmd4 = new Command(NetworkCommand.ENDTURN, getNextPlayer());
-	    try {
-		toSender.reset();
-		toSender.writeObject(cmd4);
-	    } catch (IOException e) {
-		// TODO Auto-generated catch block
-		e.printStackTrace();
-	    }
-
 	    System.out.println("1) gofish\n2) quit\n3) hand");
 	}
 
+	Command cmd4 = new Command(NetworkCommand.ENDTURN, getNextPlayer());
+	try {
+	    toSender.reset();
+	    toSender.writeObject(cmd4);
+	} catch (IOException e) {
+	    // TODO Auto-generated catch block
+	    e.printStackTrace();
+	}
     }
 
     private static Object getNextPlayer() {
@@ -183,8 +191,9 @@ public class Player {
 	    System.out.println(computerName + " listening on port 10495");
 	    while (true) {
 		Socket socket = fromNeighbor.accept();
+
 		String connectorName = socket.getInetAddress().getHostName();
-		System.out.println("connectorName: " + connectorName);
+		// System.out.println("connectorName: " + connectorName);
 
 		// if we are harvard
 		if (("harvard" + Arizona).equals(computerName)) {
@@ -245,7 +254,7 @@ public class Player {
 	    System.out.println("Connected to harlem");
 	}
 
-	ListenForClientUpdates listener = new ListenForClientUpdates();
+	ListenForClientUpdates listener = new ListenForClientUpdates(clientResponse);
 	// TODO 6: Start a new Thread that reads from the server
 	// Note: Need setDaemon when started with a JavaFX App, or it
 	// crashes.
@@ -253,13 +262,14 @@ public class Player {
 	thread.setDaemon(true);
 	thread.start();
 
-	ListenForClientUpdates listener2 = new ListenForClientUpdates();
+	ListenForClientUpdates listener2 = new ListenForClientUpdates(clientResponse);
 	// TODO 6: Start a new Thread that reads from the server
 	// Note: Need setDaemon when started with a JavaFX App, or it
 	// crashes.
 	Thread thread1 = new Thread(listener);
 	thread1.setDaemon(true);
 	thread1.start();
+	System.out.println("All connections have been made!");
     }
 
     public static Rank convertToRank(int c) {
@@ -320,6 +330,12 @@ public class Player {
 
     private static class ListenForClientUpdates extends Task<Object> {
 
+	private Object clientResponse;
+
+	public ListenForClientUpdates(Object clientReponse) {
+	    this.clientResponse = clientResponse;
+	}
+
 	@Override
 	public synchronized void run() {
 	    System.out.println(computerName + " listener started!");
@@ -375,7 +391,9 @@ public class Player {
 				    // TODO Auto-generated catch block
 				    e.printStackTrace();
 				}
-				clientResponse.notify();
+				synchronized (clientResponse) {
+				    clientResponse.notify();
+				}
 			    } else {
 				Card c = neighborCards.get(0);
 				System.out.println("You recieved " + neighborCards.size() + " " + c.getRank() + " from "
@@ -384,14 +402,18 @@ public class Player {
 				newCards.addAll(neighborCards);
 				hand.put(c.getRank(), newCards);
 				checkForBooks();
-				clientResponse.notify();
+				synchronized (clientResponse) {
+				    clientResponse.notify();
+				}
 			    }
 			}
 		    } else if (commandType == NetworkCommand.ENDTURN) {
 			String fromName = (String) param1;
 
 			if (computerName.equals(fromName)) {
-			    yourTurnMonitor.notify();
+			    synchronized (yourTurnMonitor) {
+				yourTurnMonitor.notify();
+			    }
 			}
 		    }
 		}
@@ -409,15 +431,14 @@ public class Player {
 	}
     }
 
+
     private static class ListenForServerUpdates extends Task<Object> {
 
 	@Override
 	public void run() {
 	    try {
 		while (true) {
-		    System.out.println("before reading object");
 		    Command input = (Command) inputFromServer.readObject();
-		    System.out.println("after reading object");
 		    NetworkCommand commandType = input.getCommand();
 		    Object param1 = input.getParam1();
 		    Object param2 = input.getParam2();
@@ -425,9 +446,10 @@ public class Player {
 
 		    if (commandType == NetworkCommand.INDEX) {
 			initializeHand((Vector<Card>) param1);
-			System.out.println("Welcome to Go Fish, " + computerName + "!");
+			System.out.println("\n\nWelcome to Go Fish, " + computerName + "!");
 			System.out.println("Here is your hand: ");
-			System.out.println(hand);
+			printHand();
+			lock = false;
 		    } else if (commandType == NetworkCommand.GAMEOVER) {
 			if (index == (int) param1)
 			    System.out.println("Congratulations!!!! You won!");
@@ -441,18 +463,22 @@ public class Player {
 			// check if there's a book
 			checkForBooks();
 			System.out.println("You received " + numCards + " cards: ");
-			System.out.println(hand);
+			printHand();
 		    } else if (commandType == NetworkCommand.ONECARD) {
 			numCards += 1;
 			addOneCard((Card) param1);
 			checkForBooks();
-			serverResponse.notify();
+			synchronized (serverResponse) {
+			    serverResponse.notify();
+			}
 			// check if there's a book
 			System.out.println("You received: " + (Card) param1);
 			System.out.println("New hand: \n" + hand);
 		    } else if (commandType == NetworkCommand.OUTOFCARDS) {
 			System.out.println("There are no more cards remaining in the deck!");
-			serverResponse.notify();
+			synchronized (serverResponse) {
+			    serverResponse.notify();
+			}
 		    }
 		}
 	    } catch (IOException ioe) {
@@ -510,6 +536,16 @@ public class Player {
 	} catch (IOException e) {
 	    e.printStackTrace();
 	}
+    }
+
+    public static void printHand() {
+	Vector<Card> printCards = new Vector<Card>();
+
+	for (Rank r : Rank.values()) {
+	    printCards.addAll(hand.get(r));
+	}
+
+	System.out.println(printCards);
     }
 
     private static String getName(int index) {

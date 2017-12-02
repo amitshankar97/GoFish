@@ -43,7 +43,7 @@ public class Server {
 	    ObjectOutputStream outputToClient = new ObjectOutputStream(socket.getOutputStream());
 	    ObjectInputStream inputFromClient = new ObjectInputStream(socket.getInputStream());
 
-	    players.add(new ObjectOutputStream(outputToClient)); // add the
+	    players.add(outputToClient); // add the
 								 // stream
 	    // outputToClient.writeObject(new Command(NetworkCommand.WELCOME));
 
@@ -63,7 +63,9 @@ public class Server {
 		System.out.println("All four players have been connected.");
 		for (int i = 0; i < NUM_PLAYERS; i++) {
 		    System.out.println("i: " + i);
-		    Command cmd = new Command(NetworkCommand.INDEX, buildHand());
+		    Vector<Card> hand = buildHand();
+		    System.out.println(hand);
+		    Command cmd = new Command(NetworkCommand.INDEX, hand);
 		    players.get(i).writeObject(cmd);
 		}
 	    }
