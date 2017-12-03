@@ -474,6 +474,7 @@ public class Player {
 	    this.yourTurnMonitor = yourTurnMonitor;
 	}
 
+	@SuppressWarnings("unchecked")
 	@Override
 	public synchronized void run() {
 	    try {
@@ -596,6 +597,7 @@ public class Player {
 	    this.serverResponse = serverResponse;
 	}
 
+	@SuppressWarnings("unchecked")
 	@Override
 	public void run() {
 	    try {
@@ -701,10 +703,6 @@ public class Player {
 	    // Not using this call, but we need to override it to compile
 	    return null;
 	}
-    }
-
-    private void setIndex(int num) {
-	this.index = num;
     }
 
     public static void isHandEmpty() {
