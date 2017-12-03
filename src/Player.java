@@ -1,3 +1,4 @@
+import java.io.EOFException;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
@@ -42,32 +43,33 @@ public class Player {
     private static Object yourTurnMonitor;
     private static Object lock;
 
+    private static boolean deckEmpty = false;
+    private static boolean handEmpty = false;
+    private static boolean hasToldServer = false;
+
     public static void main(String args[]) throws IOException {
 	initializeComputerName();
 	initializeBooksAndHand();
-
 
 	yourTurnMonitor = new Object();
 	clientResponse = new Object();
 	serverResponse = new Object();
 	lock = new Object();
 
-
 	makeServerConnection();
 	makePlayerConnections();
 
-	synchronized(lock) {
-	    try {
-		lock.wait();
-	    } catch (InterruptedException e) {
-		// TODO Auto-generated catch block
-		e.printStackTrace();
-	    }
+	try {
+	    System.out.println("Loading game....\n\n");
+	    Thread.sleep(10000);
+	} catch (InterruptedException e1) {
+	    // TODO Auto-generated catch block
+	    e1.printStackTrace();
 	}
-
 
 	if (("harbor" + Arizona).equals(computerName)) {
 	    myTurn();
+	    System.out.println("Waiting for my turn...");
 	    synchronized (yourTurnMonitor) {
 		try {
 		    yourTurnMonitor.wait();
@@ -78,6 +80,7 @@ public class Player {
 		System.out.println("Monitor was signaled!");
 	    }
 	} else {
+	    System.out.println("Waiting for my turn...");
 	    synchronized (yourTurnMonitor) {
 		try {
 		    yourTurnMonitor.wait();
@@ -90,6 +93,7 @@ public class Player {
 
 	while (true) {
 	    myTurn();
+	    System.out.println("Waiting for my turn...");
 	    synchronized (yourTurnMonitor) {
 		try {
 		    yourTurnMonitor.wait();
@@ -124,8 +128,33 @@ public class Player {
     }
 
     public synchronized static void myTurn() {
+	isHandEmpty();
+	if (!deckEmpty && handEmpty) {
+	    askServerForFiveCards();
+	    synchronized (serverResponse) {
+		try {
+		    serverResponse.wait();
+		} catch (InterruptedException e) {
+		    // TODO Auto-generated catch block
+		    e.printStackTrace();
+		}
+	    }
+	    isHandEmpty();
+	}
+	if (deckEmpty && handEmpty) {
+	    if (!hasToldServer) {
+		Command cmd9 = new Command(NetworkCommand.GAMEOVER);
+		hasToldServer = true;
+	    }
+	    System.out.println("\nWaiting for other players to finish");
+	    return;
+	}
+
 	System.out.println("Here are the possible commands:");
-	System.out.println("1) gofish\n2) quit\n3) hand");
+	System.out.println(
+		"1) gofish: Lets you ask a player for a card, if unsuccessful, you will receive a card from the deck, if there are any"
+			+ "\n2) quit: Quits the game" + "\n3) hand: Prints your current hand"
+			+ "\n4) books: Prints the number of books");
 	while (sc.hasNext()) {
 	    Command cmd = null;
 	    String userString = sc.nextLine();
@@ -134,26 +163,44 @@ public class Player {
 	    if ("quit".equals(userString)) {
 		System.out.println("Thank you for playing Go Fish!");
 		System.exit(0);
+	    } else if ("books".equals(userString)) {
+		if (books.size() > 0) {
+		    System.out.println("\nYou have the following books:");
+		    System.out.println(books);
+		} else {
+		    System.out.println("\nYou have no books :(");
+		}
 	    } else if ("gofish".equals(userString)) {
 		int pNumber, cardNumber;
 
 		while (true) {
-		    System.out.print("Please enter the player you would like to request for a card (1-4): ");
+		    System.out.println(
+			    "\nPlease select the player you would like to ask" + " for a card from the list below:");
+
+		    for (int i = 1; i < 5; i++) {
+			String name = getName(i);
+			if (computerName.equals(name))
+			    continue;
+			System.out.println(i + ": " + name);
+		    }
+
+		    System.out.print("\nEnter player number: ");
 		    pNumber = sc.nextInt();
 
-		    if (getName(pNumber) == computerName) {
-			System.out.println("Sorry! You cannot select yourself");
+		    if (getName(pNumber).equals(computerName)) {
+			System.out.println("\nSorry! You cannot select yourself");
 			continue;
 		    } else if (pNumber > 4 || pNumber < 0) {
-			System.out.println("Invalid player number.");
+			System.out.println("\nInvalid player number.");
 			continue;
 		    } else
 			break;
 		}
 
 		while (true) {
-		    System.out.print("Please enter the card you would like to request: ");
-		    // printOptions();
+		    System.out.println("\nPlease enter the card you would like to request: ");
+		    printOptions();
+		    System.out.print("\nEnter card number: ");
 		    cardNumber = sc.nextInt();
 
 		    if (isValid(cardNumber)) {
@@ -165,10 +212,10 @@ public class Player {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
 			    }
-			    System.out.println("The client has responded!!! HECK YEAH");
 			}
 		    } else {
 			System.out.println("Sorry! That is not a valid choice.");
+			continue;
 		    }
 		    break;
 		}
@@ -178,14 +225,40 @@ public class Player {
 	    } else {
 		System.out.println("Sorry! Didn't recognize the command.");
 	    }
-	    System.out.println("1) gofish\n2) quit\n3) hand");
+
+	    System.out.println(
+		    "\n1) gofish: Lets you ask a player for a card, if unsuccessful, you will receive a card from the deck, if there are any"
+			    + "\n2) quit: Quits the game" + "\n3) hand: Prints your current hand"
+			    + "\n4) books: Prints the number of books");
 	}
+
+	if (!deckEmpty && handEmpty) {
+	    askServerForFiveCards();
+	    synchronized (serverResponse) {
+		try {
+		    serverResponse.wait();
+		} catch (InterruptedException e) {
+		    // TODO Auto-generated catch block
+		    e.printStackTrace();
+		}
+	    }
+	}
+
 	printHand();
 	System.out.println("Your turn has ended");
 	Command cmd4 = new Command(NetworkCommand.ENDTURN, getNextPlayer());
 	try {
 	    toSender.reset();
 	    toSender.writeObject(cmd4);
+	} catch (IOException e) {
+	    // TODO Auto-generated catch block
+	    e.printStackTrace();
+	}
+    }
+
+    private static void askServerForFiveCards() {
+	try {
+	    outputToServer.writeObject(new Command(NetworkCommand.FIVECARDS));
 	} catch (IOException e) {
 	    // TODO Auto-generated catch block
 	    e.printStackTrace();
@@ -323,12 +396,26 @@ public class Player {
     private static boolean isValid(int cardNumber) {
 	if (cardNumber < 2 || cardNumber > 14)
 	    return false;
+
+	// if the user doesn't have that card in their hand
+	if (hand.get(convertToRank(cardNumber)).size() == 0)
+	    return false;
+
 	return true;
     }
 
     private static void printOptions() {
-	// TODO Auto-generated method stub
+	for (Rank r : Rank.values()) {
+	    Vector<Card> cards = hand.get(r);
+	    if (cards.size() > 0) {
+		// TODO: remove 4 cards from hand hashmap if we have a book
+		printOptions(r);
+	    }
+	}
+    }
 
+    private static void printOptions(Rank r) {
+	System.out.println("For " + r + " type " + r.getValue());
     }
 
     private static void makeServerConnection() {
@@ -384,13 +471,16 @@ public class Player {
 			    System.out.println("I was asked for " + r);
 			    Vector<Card> returnCards = hand.get(r);
 			    hand.put(r, new Vector<Card>());
+			    isHandEmpty();
 			    Command cmd = new Command(NetworkCommand.GOFISHRES, param2, param1, returnCards);
 			    Command cmd2 = new Command(NetworkCommand.GOFISHREQ, param1, param2, param3);
+			    System.out.print("New hand: ");
+			    printHand();
+			    System.out.println();
 			    toSender.reset();
 			    toSender.writeObject(cmd2);
 			    toSender.reset();
 			    toSender.writeObject(cmd);
-
 			} else {
 			    System.out.println(param1 + " requested " + param3 + " from " + param2);
 			    Command cmd = new Command(NetworkCommand.GOFISHREQ, param1, param2, param3);
@@ -408,10 +498,10 @@ public class Player {
 			    Vector<Card> neighborCards = (Vector<Card>) param3;
 
 			    if (neighborCards.size() == 0) {
-				System.out.println(fromName + " didn't have any cards. Go Fish!");
+				System.out.println("\n\n" + fromName + " didn't have any cards. Go Fish!");
 				askServerForOneCard();
-				
-				synchronized(serverResponse) {
+
+				synchronized (serverResponse) {
 				    try {
 					serverResponse.wait();
 				    } catch (InterruptedException e) {
@@ -419,7 +509,7 @@ public class Player {
 					e.printStackTrace();
 				    }
 				}
-				
+
 				synchronized (this.clientResponse) {
 				    this.clientResponse.notify();
 				}
@@ -444,11 +534,10 @@ public class Player {
 			String fromName = (String) param1;
 
 			if (computerName.equals(fromName)) {
-			    System.out.println("It's my turn!! WOOT WOOT");
+			    System.out.println("\n\nIt's your turn now!");
 			    synchronized (this.yourTurnMonitor) {
-				this.yourTurnMonitor.notify();
+				this.yourTurnMonitor.notifyAll();
 			    }
-			    System.out.println("WE Signaled the monitor");
 			} else {
 			    toSender.reset();
 			    toSender.writeObject(input);
@@ -457,6 +546,8 @@ public class Player {
 		}
 	    } catch (IOException ioe) {
 		ioe.printStackTrace();
+		System.out.println("A client has left the game.");
+		System.exit(0);
 	    } catch (ClassNotFoundException cnfe) {
 		cnfe.printStackTrace();
 	    }
@@ -468,7 +559,6 @@ public class Player {
 	    return null;
 	}
     }
-
 
     private static class ListenForServerUpdates extends Task<Object> {
 
@@ -492,12 +582,13 @@ public class Player {
 
 		    if (commandType == NetworkCommand.INDEX) {
 			initializeHand((Vector<Card>) param1);
-			System.out.println("\n\nWelcome to Go Fish, " + computerName + "!");
+			System.out.println("Welcome to Go Fish, " + computerName + "!");
 			System.out.println("Here is your hand: ");
 			printHand();
-			synchronized(lock) {
-			    lock.notify();
-			}
+			/*
+			 * synchronized(this.lock) { this.lock.notify();
+			 * System.out.println("After lock.notify()"); }
+			 */
 		    } else if (commandType == NetworkCommand.GAMEOVER) {
 			if (index == (int) param1)
 			    System.out.println("Congratulations!!!! You won!");
@@ -510,20 +601,26 @@ public class Player {
 			initializeHand((Vector<Card>) param2);
 			// check if there's a book
 			checkForBooks();
+			isHandEmpty();
 			System.out.println("You received " + numCards + " cards from the server.");
 			System.out.print("New hand: ");
 			printHand();
 			System.out.println();
+
+			synchronized (this.serverResponse) {
+			    this.serverResponse.notify();
+			}
 		    } else if (commandType == NetworkCommand.ONECARD) {
 			numCards += 1;
 			addOneCard((Card) param1);
 			checkForBooks();
+			isHandEmpty();
 			synchronized (this.serverResponse) {
 			    this.serverResponse.notify();
 			}
 			// check if there's a book
 
-			System.out.println("You received: " + (Card) param1 + " from the deck!");
+			System.out.println("\nYou received: " + (Card) param1 + " from the deck!");
 			System.out.print("New hand: ");
 			printHand();
 			System.out.println();
@@ -532,10 +629,13 @@ public class Player {
 			synchronized (serverResponse) {
 			    serverResponse.notify();
 			}
+			deckEmpty = true;
 		    }
 		}
 	    } catch (IOException ioe) {
 		ioe.printStackTrace();
+		System.out.println("The dealer has left the game.");
+		System.exit(0);
 	    } catch (ClassNotFoundException cnfe) {
 		cnfe.printStackTrace();
 	    }
@@ -581,6 +681,15 @@ public class Player {
 	this.index = num;
     }
 
+    public static void isHandEmpty() {
+	for (Rank r : Rank.values()) {
+	    if (hand.get(r).size() != 0) {
+		handEmpty = false;
+		return;
+	    }
+	}
+	handEmpty = true;
+    }
 
     public static void askServerForOneCard() {
 	Command cmd = new Command(NetworkCommand.ONECARD);
@@ -598,8 +707,10 @@ public class Player {
 	for (Rank r : Rank.values()) {
 	    printCards.addAll(hand.get(r));
 	}
-
-	System.out.println(printCards);
+	if (printCards.size() == 0)
+	    System.out.println("You have no cards");
+	else
+	    System.out.println("\n" + printCards);
     }
 
     private static String getName(int index) {
@@ -629,6 +740,7 @@ public class Player {
 	    if (hand.get(r).size() == 4) {
 		System.out.println("You formed a book of " + r);
 		books.add(r);
+		hand.put(r, new Vector<Card>()); // reset the cards to size 0
 		Command cmd = new Command(NetworkCommand.BOOK, computerName, r);
 		try {
 		    outputToServer.reset();
