@@ -619,7 +619,7 @@ public class Player {
 			 */
 		    } else if (commandType == NetworkCommand.GAMEOVER) {
 			if (computerName.equals(param1))
-			    System.out.println("Congratulations!!!! You won!");
+			    System.out.println("\n\nCongratulations!!!! You won GoFish!");
 			else
 			    System.out.println("Player " + (String) param1 + " won the game!");
 			sc.close();
