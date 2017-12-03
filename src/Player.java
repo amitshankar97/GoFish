@@ -7,6 +7,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.UnknownHostException;
 import java.util.HashMap;
+import java.util.InputMismatchException;
 import java.util.Scanner;
 import java.util.Set;
 import java.util.Vector;
@@ -144,8 +145,26 @@ public class Player {
 	if (deckEmpty && handEmpty) {
 	    if (!hasToldServer) {
 		Command cmd9 = new Command(NetworkCommand.GAMEOVER);
+		try {
+		    outputToServer.writeObject(cmd9);
+
+		} catch (IOException e) {
+		    // TODO Auto-generated catch block
+		    e.printStackTrace();
+		}
 		hasToldServer = true;
 	    }
+
+	    Command cmd4 = new Command(NetworkCommand.ENDTURN, getNextPlayer());
+	    
+	    try {
+		toSender.reset();
+		toSender.writeObject(cmd4);
+	    } catch (IOException e) {
+		// TODO Auto-generated catch block
+		e.printStackTrace();
+	    }
+
 	    System.out.println("\nWaiting for other players to finish");
 	    return;
 	}
@@ -155,7 +174,9 @@ public class Player {
 		"1) gofish: Lets you ask a player for a card, if unsuccessful, you will receive a card from the deck, if there are any"
 			+ "\n2) quit: Quits the game" + "\n3) hand: Prints your current hand"
 			+ "\n4) books: Prints the number of books");
+
 	while (sc.hasNext()) {
+
 	    Command cmd = null;
 	    String userString = sc.nextLine();
 	    userString = userString.toLowerCase();
@@ -185,8 +206,12 @@ public class Player {
 		    }
 
 		    System.out.print("\nEnter player number: ");
-		    pNumber = sc.nextInt();
-
+		    try {
+			pNumber = sc.nextInt();
+		    } catch (Exception e) {
+			System.out.println("\nInvalid player number.");
+			continue;
+		    }
 		    if (getName(pNumber).equals(computerName)) {
 			System.out.println("\nSorry! You cannot select yourself");
 			continue;
@@ -232,6 +257,7 @@ public class Player {
 			    + "\n4) books: Prints the number of books");
 	}
 
+
 	if (!deckEmpty && handEmpty) {
 	    askServerForFiveCards();
 	    synchronized (serverResponse) {
@@ -265,7 +291,7 @@ public class Player {
 	}
     }
 
-    private static Object getNextPlayer() {
+    private static String getNextPlayer() {
 	if ("harbor.cs.arizona.edu".equals(computerName)) {
 	    return "harvard.cs.arizona.edu";
 	} else if ("harvard.cs.arizona.edu".equals(computerName)) {
@@ -590,10 +616,10 @@ public class Player {
 			 * System.out.println("After lock.notify()"); }
 			 */
 		    } else if (commandType == NetworkCommand.GAMEOVER) {
-			if (index == (int) param1)
+			if (computerName.equals(param1))
 			    System.out.println("Congratulations!!!! You won!");
 			else
-			    System.out.println("Player " + (int) param1 + " won the game!");
+			    System.out.println("Player " + (String) param1 + " won the game!");
 			sc.close();
 			System.exit(0);
 		    } else if (commandType == NetworkCommand.FIVECARDS) {
